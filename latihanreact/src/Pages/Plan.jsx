@@ -2,6 +2,8 @@
 import React, { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import '@geoman-io/leaflet-geoman-free'
+import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import '../App.css'
 import GeomanTools from '../components/GeomanTools'
 
@@ -25,7 +27,7 @@ export const Plan = () => {
 
   return (
     <div>
-        <GeomanTools/>
+        <GeomanTools mapInstance={mapInstance}/>
         <div ref={mapContainer} className="mapContainer"></div>
     </div>
   )
