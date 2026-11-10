@@ -24,22 +24,10 @@ def parse_vfr_hud(msg) -> dict:
         "groundspeed": msg.groundspeed,
     }
 
-def parse_heartbeat(msg) -> dict:
-    from pymavlink import mavutil
-    return {
-        "flight_mode": mavutil.mode_string_v10(msg),
-        "armed": bool(msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED),
-    }
-
-def parse_battery(msg) -> dict:
-    return {"battery_percent": None if msg.battery_remaining < 0 else msg.battery_remaining}
-
 HANDLERS = {
     "GLOBAL_POSITION_INT": parse_pos,
     "ATTITUDE": parse_attitude,
     "VFR_HUD": parse_vfr_hud,
-    "HEARTBEAT": parse_heartbeat,
-    "SYS_STATUS": parse_battery,
 }
 
 def parse_message(msg):

@@ -5,7 +5,7 @@ from .. import config
 
 logger = logging.getLogger(__name__)
 
-TYPES = ["HEARTBEAT", "GLOBAL_POSITION_INT", "ATTITUDE", "VFR_HUD", "SYS_STATUS"]
+TYPES = ["GLOBAL_POSITION_INT", "ATTITUDE", "VFR_HUD"]
 
 # Safety cap per read_messages() call
 MAX_MESSAGES_PER_READ = 500

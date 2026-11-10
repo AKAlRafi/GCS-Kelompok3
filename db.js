@@ -135,23 +135,32 @@ export function saveTelemetry(record) {
     )
   `)
 
+  const numberOrNull = value => value == null || value === '' ? null : Number(value)
+
   return insert.run({
     log_id: record.log_id ?? null,
     recorded_at: record.recorded_at ?? new Date().toISOString(),
-    latitude: record.latitude ?? null,
-    longitude: record.longitude ?? null,
-    altitude: record.altitude ?? null,
-    relative_altitude: record.relative_altitude ?? null,
-    ground_speed: record.ground_speed ?? null,
-    air_speed: record.air_speed ?? null,
-    roll: record.roll ?? null,
-    pitch: record.pitch ?? null,
-    yaw: record.yaw ?? null,
-    heading: record.heading ?? null,
-    battery_percent: record.battery_percent ?? null,
+    latitude: numberOrNull(record.latitude),
+    longitude: numberOrNull(record.longitude),
+    altitude: numberOrNull(record.altitude),
+    relative_altitude: numberOrNull(record.relative_altitude),
+    ground_speed: numberOrNull(record.ground_speed),
+    air_speed: numberOrNull(record.air_speed),
+    roll: numberOrNull(record.roll),
+    pitch: numberOrNull(record.pitch),
+    yaw: numberOrNull(record.yaw),
+    heading: numberOrNull(record.heading),
+    battery_percent: numberOrNull(record.battery_percent),
     flight_mode: record.flight_mode ?? null,
     armed: record.armed == null ? null : Number(Boolean(record.armed)),
   }).lastInsertRowid
+}
+
+export function listTelemetry(logId, limit = 1000) {
+  return db.prepare(`
+    SELECT * FROM telemetry_records
+    WHERE log_id = ? ORDER BY recorded_at ASC LIMIT ?
+  `).all(logId, Math.max(1, Math.min(Number(limit) || 1000, 10000)))
 }
 
 export function closeDb() {

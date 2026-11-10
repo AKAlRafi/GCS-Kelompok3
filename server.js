@@ -95,32 +95,29 @@ async function subscribeTelemetry() {
             // Mengubah JSON string menjadi JavaScript Object
             const telemetryData = JSON.parse(message);
 
-            const { raw_mavlink: rawMavlink, timestamp, ...fields } = telemetryData;
-            latestTelemetry = { ...latestTelemetry, ...fields, received_at: new Date().toISOString() };
+            latestTelemetry = { ...latestTelemetry, ...telemetryData, received_at: new Date().toISOString() };
 
-            if (activeLog && rawMavlink) {
-                const logTime = Buffer.alloc(8);
-                logTime.writeBigUInt64BE(BigInt(timestamp || Date.now()) * 1000n);
-                activeLog.stream.write(Buffer.concat([logTime, Buffer.from(rawMavlink, 'base64')]));
+            if (activeLog) {
+                const row = {
+                    log_id: activeLog.id,
+                    recorded_at: latestTelemetry.received_at,
+                    latitude: latestTelemetry.lat,
+                    longitude: latestTelemetry.lon,
+                    altitude: latestTelemetry.alt,
+                    relative_altitude: latestTelemetry.rel_alt,
+                    ground_speed: latestTelemetry.groundspeed,
+                    air_speed: latestTelemetry.airspeed,
+                    roll: latestTelemetry.roll,
+                    pitch: latestTelemetry.pitch,
+                    yaw: latestTelemetry.yaw,
+                    heading: latestTelemetry.heading,
+                    battery_percent: latestTelemetry.battery_percent,
+                    flight_mode: latestTelemetry.flight_mode,
+                    armed: latestTelemetry.armed
+                };
+                database.saveTelemetry(row);
+                activeLog.stream.write(`${JSON.stringify(latestTelemetry)}\n`);
             }
-
-            database.saveTelemetry({
-                log_id: activeLog?.id ?? null,
-                recorded_at: latestTelemetry.received_at,
-                latitude: latestTelemetry.lat,
-                longitude: latestTelemetry.lon,
-                altitude: latestTelemetry.alt,
-                relative_altitude: latestTelemetry.rel_alt,
-                ground_speed: latestTelemetry.groundspeed,
-                air_speed: latestTelemetry.airspeed,
-                roll: latestTelemetry.roll,
-                pitch: latestTelemetry.pitch,
-                yaw: latestTelemetry.yaw,
-                heading: latestTelemetry.heading,
-                battery_percent: latestTelemetry.battery_percent,
-                flight_mode: latestTelemetry.flight_mode,
-                armed: latestTelemetry.armed
-            });
 
             console.log('Telemetri diterima dari Python:', telemetryData);
 
@@ -143,6 +140,7 @@ app.get('/api/telemetry', (req, res) => res.json(latestTelemetry));
 app.get('/api/parameters', (req, res) => res.json(database.listParameters()));
 app.put('/api/parameters', (req, res) => {
     try {
+        if (!Array.isArray(req.body.parameters)) throw new Error('parameters must be an array.');
         res.json(database.saveParameters(req.body.parameters));
     } catch (error) {
         res.status(400).json({ error: error.message });
@@ -152,12 +150,9 @@ app.get('/api/logs', (req, res) => res.json(database.listFlightLogs()));
 app.post('/api/logs/start', (req, res) => {
     if (activeLog) return res.status(409).json({ error: 'Log sudah berjalan.' });
     const name = String(req.body.name || 'penerbangan').replace(/[^a-zA-Z0-9_-]/g, '-');
-    const fileName = `${Date.now()}-${name}.tlog`;
+    const fileName = `${Date.now()}-${name}.jsonl`;
     const filePath = path.join(logFolder, fileName);
-    activeLog = {
-        id: database.createFlightLog({ name, fileName, filePath }),
-        stream: fs.createWriteStream(filePath)
-    };
+    activeLog = { id: database.createFlightLog({ name, fileName, filePath }), stream: fs.createWriteStream(filePath) };
     res.json({ ok: true, id: activeLog.id });
 });
 app.post('/api/logs/stop', async (req, res) => {
@@ -172,6 +167,10 @@ app.get('/api/logs/:id/download', (req, res) => {
     const log = database.getFlightLog(req.params.id);
     if (!log || !fs.existsSync(log.file_path)) return res.status(404).json({ error: 'File log tidak ditemukan.' });
     res.download(log.file_path, log.file_name);
+});
+app.get('/api/logs/:id/telemetry', (req, res) => {
+    if (!database.getFlightLog(req.params.id)) return res.status(404).json({ error: 'Log tidak ditemukan.' });
+    res.json(database.listTelemetry(req.params.id, req.query.limit));
 });
 
 // ==========================================
