@@ -3,13 +3,24 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const { createClient } = require('redis');
+const path = require('path');
+const fs = require('fs');
+const { fileURLToPath } = require('url');
 require('dotenv').config();
+
+const folder = path.dirname(fileURLToPath(__filename));
+const logFolder = path.join(folder, 'data', 'logs');
+fs.mkdirSync(logFolder, { recursive: true });
+let database;
+let activeLog = null;
+let latestTelemetry = {};
 
 // ==========================================
 // 1. INISIALISASI EXPRESS
 // ==========================================
 
 const app = express();
+app.use(express.json());
 
 // Membuat HTTP Server
 const server = http.createServer(app);
@@ -75,7 +86,7 @@ io.on('connection', (socket) => {
 async function subscribeTelemetry() {
 
     // Harus sama dengan REDIS_CHANNEL pada Python
-    const CHANNEL = 'telemetry';
+    const CHANNEL = process.env.REDIS_CHANNEL || 'telemetry';
 
     await redisSubscriber.subscribe(CHANNEL, (message) => {
 
@@ -84,10 +95,30 @@ async function subscribeTelemetry() {
             // Mengubah JSON string menjadi JavaScript Object
             const telemetryData = JSON.parse(message);
 
+            latestTelemetry = { ...latestTelemetry, ...telemetryData, received_at: new Date().toISOString() };
+
+            if (activeLog) {
+                database.saveTelemetry({
+                    log_id: activeLog.id,
+                    recorded_at: latestTelemetry.received_at,
+                    latitude: telemetryData.lat,
+                    longitude: telemetryData.lon,
+                    altitude: telemetryData.alt,
+                    relative_altitude: telemetryData.rel_alt,
+                    ground_speed: telemetryData.groundspeed,
+                    air_speed: telemetryData.airspeed,
+                    roll: telemetryData.roll,
+                    pitch: telemetryData.pitch,
+                    yaw: telemetryData.yaw,
+                    heading: telemetryData.heading,
+                    battery_percent: telemetryData.battery_percent
+                });
+            }
+
             console.log('Telemetri diterima dari Python:', telemetryData);
 
             // Meneruskan data ke seluruh client Socket.IO
-            io.emit('telemetry-update', telemetryData);
+            io.emit('telemetry-update', latestTelemetry);
 
         } catch (error) {
 
@@ -99,6 +130,32 @@ async function subscribeTelemetry() {
 
     console.log(`Berhasil subscribe ke channel: ${CHANNEL}`);
 }
+
+app.get('/api/health', (req, res) => res.json({ ok: true, redis: redisClient.isReady }));
+app.get('/api/telemetry', (req, res) => res.json(latestTelemetry));
+app.get('/api/parameters', (req, res) => res.json(database.listParameters()));
+app.put('/api/parameters', (req, res) => {
+    try {
+        res.json(database.saveParameters(req.body.parameters));
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+app.get('/api/logs', (req, res) => res.json(database.listFlightLogs()));
+app.post('/api/logs/start', (req, res) => {
+    if (activeLog) return res.status(409).json({ error: 'Log sudah berjalan.' });
+    const name = String(req.body.name || 'penerbangan').replace(/[^a-zA-Z0-9_-]/g, '-');
+    const fileName = `${Date.now()}-${name}.tlog`;
+    const filePath = path.join(logFolder, fileName);
+    activeLog = { id: database.createFlightLog({ name, fileName, filePath }) };
+    res.json({ ok: true, id: activeLog.id });
+});
+app.post('/api/logs/stop', (req, res) => {
+    if (!activeLog) return res.status(400).json({ error: 'Belum ada log yang berjalan.' });
+    database.finishFlightLog(activeLog.id);
+    activeLog = null;
+    res.json({ ok: true });
+});
 
 // ==========================================
 // 7. FUNGSI UTAMA SERVER
@@ -118,13 +175,9 @@ async function startServer() {
 
         console.log('Redis Subscriber berhasil terhubung!');
 
+        database = await import('./db.js');
+
         // Test Redis
-        await redisClient.set('framework', 'Express');
-
-        const value = await redisClient.get('framework');
-
-        console.log('Stored value:', value);
-
         // Subscribe ke channel telemetri Python
         await subscribeTelemetry();
 
