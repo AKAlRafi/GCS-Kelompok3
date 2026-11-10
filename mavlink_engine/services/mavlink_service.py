@@ -44,15 +44,23 @@ class MavlinkService:
         )
         return True
 
-    def read_messages(self) -> list:
-        """Drain pending wanted messages without blocking (at most
-        MAX_MESSAGES_PER_READ per call). Socket errors are logged
-        (rate-limited) and whatever was read so far is returned.
+    def read_messages(self, timeout: float = 0.0) -> list:
+        """Return pending wanted messages (at most MAX_MESSAGES_PER_READ).
+        timeout=0: never blocks.
+        timeout>0: waits up to `timeout` secs for the FIRST message (wakes
+        as soon as one arrives), then drains the rest without waiting.
+        Socket errors are logged (rate-limited); whatever was read so far
+        is returned.
         """
         if not self.conn:
             return []
         out = []
         try:
+            if timeout > 0:
+                first = self.conn.recv_match(type=TYPES, blocking=True, timeout=timeout)
+                if first is None:
+                    return out
+                out.append(first)
             while len(out) < MAX_MESSAGES_PER_READ:
                 msg = self.conn.recv_match(type=TYPES, blocking=False)
                 if msg is None:
@@ -60,6 +68,8 @@ class MavlinkService:
                 out.append(msg)
         except OSError as e:
             self._log_limited(f"MAVLink read failed: {e}")
+            if timeout > 0:
+                time.sleep(timeout)     # A failing socket must not spin the caller
         return out
 
     def close(self):
