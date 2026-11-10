@@ -1,4 +1,5 @@
 import logging
+import base64
 import time
 
 from . import config
@@ -26,6 +27,8 @@ def main():
             messages = mavlink.read_messages(timeout=config.PUBLISH_INTERVAL)
             for message in messages:
                 telemetry.update(parse_message(message) or {})
+                telemetry["raw_mavlink"] = base64.b64encode(message.get_msgbuf()).decode("ascii")
+                telemetry["timestamp"] = int(time.time() * 1000)
             if messages:
                 redis.publish_telemetry(telemetry)
     except KeyboardInterrupt:
