@@ -9,10 +9,10 @@ def _round(value, digits=DECIMALS):
 
 def parse_pos(msg) -> dict:
     return {
-        "lat": msg.lat / 1e7,
-        "lon": msg.lon / 1e7,
-        "alt": _round(msg.alt / 1000),
-        "rel_alt": msg.relative_alt / 1000,
+        "latitude": msg.lat / 1e7,
+        "longitude": msg.lon / 1e7,
+        "altitude": _round(msg.alt / 1000),
+        "relative_altitude": msg.relative_alt / 1000,
         "heading": None if msg.hdg == HDG_UNKNOWN else msg.hdg / 100,
     }
 
@@ -25,8 +25,8 @@ def parse_attitude(msg) -> dict:
 
 def parse_vfr_hud(msg) -> dict:
     return {
-        "airspeed": _round(msg.airspeed),
-        "groundspeed": _round(msg.groundspeed),
+        "air_speed": _round(msg.airspeed),
+        "ground_speed": _round(msg.groundspeed),
     }
 
 def parse_heartbeat(msg) -> dict | None:
