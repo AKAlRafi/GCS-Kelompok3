@@ -67,7 +67,7 @@ class RedisService:
             is not serializable, the publish failed, or a retry is pending.
         """
         if not self.client:
-            self._log_limited("Redis not connected. Call connect() first.")
+            self.log_limited("Redis not connected. Call connect() first.")
             return False
 
         if time.monotonic() < self._retry_at:
@@ -77,7 +77,7 @@ class RedisService:
         try:
             payload = json.dumps(data, allow_nan=False)
         except (TypeError, ValueError) as e:
-            self._log_limited(f"Data is not JSON serializable: {e}")
+            self.log_limited(f"Data is not JSON serializable: {e}")
             return False
 
         try:
@@ -85,7 +85,7 @@ class RedisService:
         except redis.RedisError as e:
             self._retry_at = time.monotonic() + RETRY_BACKOFF
             self._failing = True
-            self._log_limited(f"Publish to {self.channel} failed: {e}")
+            self.log_limited(f"Publish to {self.channel} failed: {e}")
             return False
 
         if self._failing:
@@ -106,7 +106,7 @@ class RedisService:
             self.client = None  # Makes publish_telemetry fail cleanly after close
             logger.info("Redis connection closed.")
 
-    def _log_limited(self, message: str):
+    def log_limited(self, message: str):
         """Log an error at most once per ERROR_LOG_INTERVAL"""
         now = time.monotonic()
         if now - self._last_error_time >= ERROR_LOG_INTERVAL:
