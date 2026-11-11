@@ -1,4 +1,5 @@
 import math
+from pymavlink import mavutil
 
 HDG_UNKNOWN = 65535
 
@@ -24,10 +25,26 @@ def parse_vfr_hud(msg) -> dict:
         "groundspeed": msg.groundspeed,
     }
 
+def parse_heartbeat(msg) -> dict | None:
+    if msg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_INVALID:
+        return None
+    return {
+        "armed": bool(msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED),
+        "flight_mode": mavutil.mode_string_v10(msg),
+    }
+
+def parse_sys_status(msg) -> dict:
+    pct = msg.battery_remaining
+    return {
+        "battery_percent": None if pct < 0 else pct,
+    }
+
 HANDLERS = {
     "GLOBAL_POSITION_INT": parse_pos,
     "ATTITUDE": parse_attitude,
     "VFR_HUD": parse_vfr_hud,
+    "HEARTBEAT": parse_heartbeat,
+    "SYS_STATUS": parse_sys_status,
 }
 
 def parse_message(msg):
