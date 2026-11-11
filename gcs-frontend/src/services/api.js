@@ -1,6 +1,12 @@
+// GARIS BESARNYA 
+// mengatur komunikasi lewat rest api
+// prepare front end get data to backend 
+
+// impor library kirim http request
 import axios from 'axios';
 import { API_URL } from "../config";
 
+// konfigurasi http 
 const http = axios.create ({
     baseURL: `${API_URL}/api`,
     timeout: 10_000,
@@ -8,12 +14,12 @@ const http = axios.create ({
 
 const SLOW = { timeout: 30_000 }; // data banyak = lama
 
-//menyaring data
+//menyaring data posisi dari respons axios lewat res.data
 const clean = (waypoints) => 
     waypoints.map(({lat, lon, alt}) => ({ lat, lon, alt }));
 const data = (res) => res.data;
 
-// koneksi API
+// koneksi API minta. kirim, update, hapus
 export const connectionApi = {
     status: () => http.get('/connection/status').then(data),
     connect: (port, baud) =>
@@ -22,7 +28,7 @@ export const connectionApi = {
      http.post('/connection/disconnect').then(data),
 }
 
-export const missionApi = {
+export const missionApi = { //misi and wp
     //DB
     list: () => http.get('/missions').then(data),
     get: (id) => http.get(`/missions/${id}`).then(data),
@@ -52,7 +58,7 @@ export const missionApi = {
         http.get('/fc/missions/download', SLOW).then(data),
 };
 
-//api untuk flight log 
+//api untuk flight log  
 export const logApi = {
     status:()=>http.get('/logs/status').then(data),
     start: () => http.post('/logs/start').then(data),

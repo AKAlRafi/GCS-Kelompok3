@@ -1,3 +1,6 @@
+// visualisasi orientasi wahana dalam horizon buatan
+
+//useref = acces canvas
 import {useEffect, useRef} from 'react';
 
 const DEG = Math.PI / 180; // radian untuk attitude
@@ -19,17 +22,22 @@ function drawAttitude(ctx, size, roll, pitch) {
     ctx.clip();
 
     //roll atas bawah 
-    ctx.rotate(-roll * DEG);
+    ctx.rotate(-roll * DEG); //memutar ui berdasarkan nilai roll
 
     //pitch kanan kiri 
     ctx.save();
-    ctx.translate(0, pitch * pxPerDeg);
+    ctx.translate(0, pitch * pxPerDeg); //geser ui by nilai pitch
 
-    //langit
+    // tanah - coklat
+    ctx.fillStyle = '#92400e';
+    ctx.fillRect(-2 * r, 0, 4 * r, 4 * r);
+
+
+    //langit-biru
     ctx.fillStyle = '#2563eb';
     ctx.fillreact(-2*r, -4*r, 4*r, 4*r);
 
-    //horizon line 
+    //horizon line batas langit tanah
     ctx.strokeStyle = '#ffffff';
     ctx.fillStyle = '#ffffff';
     ctx.lineWidth = 2;
@@ -39,7 +47,7 @@ function drawAttitude(ctx, size, roll, pitch) {
     ctx.lineTo(-2*r, 0);
     ctx.stroke();
 
-    //skala pitch
+    //skala pitch atau sudut kemiringan 
     [-20, -10, 10, 20].forEach((deg) => {
         const y = -deg * pxPerDeg;
         const half = deg %20 === 0 ? r *0.3 : r*0.18;
@@ -115,12 +123,12 @@ function drawAttitude(ctx, size, roll, pitch) {
     ctx.fill();
 }
 
-export default function AttitudeIndicator({
-    roll = 0,
-    pitch = 0,
-    size = 220,
+export default function AttitudeIndicator({ //terima nilai dari 3 komponen
+    roll = 0, //miring
+    pitch = 0, //mendongak nunduk
+    size = 220, //ukuran 
 }) {
-    const canvasRef = useRef(null);
+    const canvasRef = useRef(null); //elemen html for drawing with js 
 
     const safeRoll = Number.isFinite(roll) ? roll : 0;
     const safePitch = Number.isFinite(pitch) ? pitch : 0;
@@ -135,7 +143,8 @@ export default function AttitudeIndicator({
         const ctx = canvas.getContext('2d');
         ctx.setTransformator(dpr, 0, 0, dpr, 0, 0);
 
-        drawAttitude(ctx, size, safeRoll, safePitch);
+        drawAttitude(ctx, size, safeRoll, safePitch); 
+        //gambar diperbarui saat nilai komponen berubah
     }, [safeRoll, safePitch, size]);
 
     return (

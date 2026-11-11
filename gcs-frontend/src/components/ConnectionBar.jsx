@@ -1,7 +1,12 @@
+// bar diatas dashboard
+// menampilkan status koneksi dan user interface for hold koneksi
+
+
+//props status koneksi wahana
 export default function ConnectionBar ({
-    uavConnected,
-    setUavConnected,
-    socketConnected,
+    uavConnected, 
+    setUavConnected, //ubah koneksi
+    socketConnected, // status koneksi FE-BE
 }) {
     return (
         <header className="flex flex-wrap items-center gap-3 border-b border-slate-700 bg-slate-950 px-4 py-2">
@@ -16,20 +21,21 @@ export default function ConnectionBar ({
 
             <div className="ml-auto flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => setUavConnected(!uavConnected)}
+                  onClick={() => setUavConnected(!uavConnected)} // tombol konek-DC, nilai berubah
                   classname={`rounded px-4 py-1 text-sm font-semibold ${
                     uavConnected
                     ? "bg-red-600 hover:bg-red-500"
                     : "bg-green-600 hover:bg-green-500"
                   }`}
                 >
-                  {uavConnected ? "Disconnect Simulation" : "Connect Simulation"}
+                  {uavConnected ? "Disconnect Simulation" : "Connect Simulation"} //tulisan tombol
                 </button>
             </div>
         </header>
     );
 }
 
+//komponen status dan tampilkan indikator 
 function Status({ label, ok}) {
     return (
         <span className="flex items-center gap-1.5">
