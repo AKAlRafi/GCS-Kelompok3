@@ -1,12 +1,15 @@
-import Database from 'better-sqlite3'
-import { mkdirSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+const Database = require('better-sqlite3')
+const { mkdirSync } = require('node:fs')
+const path = require('node:path')
 
-const folder = path.dirname(fileURLToPath(import.meta.url))
+const folder = __dirname
 const dataFolder = path.join(folder, 'data')
 
 mkdirSync(dataFolder, { recursive: true })
+// import Database from 'better-sqlite3'
+// import { mkdirSync } from 'node:fs'
+// import path from 'node:path'
+// import { fileURLToPath } from 'node:url'
 
 const db = new Database(path.join(dataFolder, 'gcs.db'))
 db.pragma('journal_mode = WAL')
@@ -56,9 +59,10 @@ db.exec(`
 `)
 
 const defaultParameters = [
-  ['min_battery', 20, '%', 'Batas baterai minimum untuk peringatan'],
-  ['max_altitude', 120, 'm', 'Batas ketinggian untuk peringatan'],
-  ['max_speed', 25, 'm/s', 'Batas kecepatan untuk peringatan'],
+  ['min_battery', 20, '%', 'Titik dimana peringatan baterai kurang akan keluar'],
+  ['max_altitude', 120, 'm', 'Ketinggian maksimal yg bisa dicapai'],
+  ['max_speed', 25, 'm/s', 'Diatas kecepatan ini, bakalan ada peringatan overspeed'],
+  ['stall_speed', 15, 'm/s', 'Titik dimana peringatan stall akan muncul']
 ]
 
 const addDefault = db.prepare(`
@@ -68,15 +72,15 @@ const addDefault = db.prepare(`
 
 for (const parameter of defaultParameters) addDefault.run(...parameter)
 
-export function getDb() {
+function getDb() {
   return db
 }
 
-export function listParameters() {
+function listParameters() {
   return db.prepare('SELECT * FROM parameters ORDER BY name').all()
 }
 
-export function saveParameters(parameters) {
+function saveParameters(parameters) {
   const updateParameter = db.prepare(`
     UPDATE parameters
     SET value = ?, updated_at = CURRENT_TIMESTAMP
@@ -96,7 +100,7 @@ export function saveParameters(parameters) {
   return listParameters()
 }
 
-export function createFlightLog({ name, fileName, filePath, startedAt = new Date().toISOString() }) {
+function createFlightLog({ name, fileName, filePath, startedAt = new Date().toISOString() }) {
   const result = db.prepare(`
     INSERT INTO flight_logs (name, file_name, file_path, started_at)
     VALUES (?, ?, ?, ?)
@@ -105,24 +109,24 @@ export function createFlightLog({ name, fileName, filePath, startedAt = new Date
   return Number(result.lastInsertRowid)
 }
 
-export function finishFlightLog(id, endedAt = new Date().toISOString()) {
+function finishFlightLog(id, endedAt = new Date().toISOString()) {
   return db.prepare(`
     UPDATE flight_logs SET ended_at = ? WHERE id = ?
   `).run(endedAt, id).changes > 0
 }
 
-export function listFlightLogs() {
+function listFlightLogs() {
   return db.prepare(`
     SELECT id, name, file_name, started_at, ended_at, created_at
     FROM flight_logs ORDER BY id DESC
   `).all()
 }
 
-export function getFlightLog(id) {
+function getFlightLog(id) {
   return db.prepare('SELECT * FROM flight_logs WHERE id = ?').get(id)
 }
 
-export function saveTelemetry(record) {
+function saveTelemetry(record) {
   const insert = db.prepare(`
     INSERT INTO telemetry_records (
       log_id, recorded_at, latitude, longitude, altitude, relative_altitude,
@@ -156,13 +160,26 @@ export function saveTelemetry(record) {
   }).lastInsertRowid
 }
 
-export function listTelemetry(logId, limit = 1000) {
+function listTelemetry(logId, limit = 1000) {
   return db.prepare(`
     SELECT * FROM telemetry_records
     WHERE log_id = ? ORDER BY recorded_at ASC LIMIT ?
   `).all(logId, Math.max(1, Math.min(Number(limit) || 1000, 10000)))
 }
 
-export function closeDb() {
+function closeDb() {
   if (db.open) db.close()
+}
+
+module.exports = {
+  getDb,
+  listParameters,
+  saveParameters,
+  createFlightLog,
+  finishFlightLog,
+  listFlightLogs,
+  getFlightLog,
+  saveTelemetry,
+  listTelemetry,
+  closeDb
 }
