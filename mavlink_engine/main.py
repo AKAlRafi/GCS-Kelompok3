@@ -6,6 +6,7 @@ import time
 from .parsers.telemetry_parser import parse_message
 from .services.mavlink_service import MavlinkService, TYPES
 from .services.redis_service import RedisService
+from . import config
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ REQUIRED_KEYS = {
 }
 
 WAIT_TIMEOUT = 0.1         # Max wait for a message; the loop still wakes this 
-MIN_PUBLISH_INTERVAL = 0.02    # Cap at 50 publishes/s if the link floods
+MIN_PUBLISH_INTERVAL = config.PUBLISH_INTERVAL    # Cap at 1 per PUBLISH_INTERVAL publishes per second
 RECONNECT_DELAY = 5.0      # Time in seconds between reconnect attempts
 MAX_PUBLISH_FAILS = 20     # Consecutive failures before reconnecting Redis
 STALE_AFTER = 2.0          # A message type silent this long = stale data
