@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 # State is published only when every field has been seen at least once
 REQUIRED_KEYS = {
-    "latitude", "longitude", "altitude", "relative_altitude", "heading",
-    "roll", "pitch", "yaw", "air_speed", "ground_speed",
+    "lat", "lon", "alt", "rel_alt", "heading",
+    "roll", "pitch", "yaw", "airspeed", "groundspeed",
 }
 
 WAIT_TIMEOUT = 0.1         # Max wait for a message; the loop still wakes this 
