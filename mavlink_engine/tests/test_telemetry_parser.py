@@ -14,10 +14,10 @@ def test_position():
         lat=-70000000, lon=1100000000,
         alt=150000, relative_alt=50000, hdg=9000,
     ))
-    assert r["lat"] == pytest.approx(-7.0)    # negative (south) stays negative
-    assert r["lon"] == pytest.approx(110.0)
-    assert r["alt"] == pytest.approx(150.0)
-    assert r["rel_alt"] == pytest.approx(50.0)
+    assert r["latitude"] == pytest.approx(-7.0)    # negative (south) stays negative
+    assert r["longitude"] == pytest.approx(110.0)
+    assert r["altitude"] == pytest.approx(150.0)
+    assert r["relative_altitude"] == pytest.approx(50.0)
     assert r["heading"] == pytest.approx(90.0)
 
 
@@ -40,7 +40,7 @@ def test_attitude_radians_to_degrees():
 
 def test_vfr_hud_passthrough():
     r = parse_message(_msg("VFR_HUD", airspeed=5.5, groundspeed=4.2))
-    assert r == {"airspeed": 5.5, "groundspeed": 4.2}
+    assert r == {"air_speed": 5.5, "ground_speed": 4.2}
 
 
 def test_heartbeat_armed(monkeypatch):
