@@ -2,27 +2,31 @@ import math
 from pymavlink import mavutil
 
 HDG_UNKNOWN = 65535
+DECIMALS = 2
+
+def _round(value, digits=DECIMALS):
+    return round(value, digits) + 0.0
 
 def parse_pos(msg) -> dict:
     return {
         "lat": msg.lat / 1e7,
         "lon": msg.lon / 1e7,
-        "alt": msg.alt / 1000,
+        "alt": _round(msg.alt / 1000),
         "rel_alt": msg.relative_alt / 1000,
         "heading": None if msg.hdg == HDG_UNKNOWN else msg.hdg / 100,
     }
 
 def parse_attitude(msg) -> dict:
     return {
-        "roll": math.degrees(msg.roll),
-        "pitch": math.degrees(msg.pitch),
-        "yaw": math.degrees(msg.yaw),
+        "roll": _round(math.degrees(msg.roll)),
+        "pitch": _round(math.degrees(msg.pitch)),
+        "yaw": _round(math.degrees(msg.yaw)),
     }
 
 def parse_vfr_hud(msg) -> dict:
     return {
-        "airspeed": msg.airspeed,
-        "groundspeed": msg.groundspeed,
+        "airspeed": _round(msg.airspeed),
+        "groundspeed": _round(msg.groundspeed),
     }
 
 def parse_heartbeat(msg) -> dict | None:
