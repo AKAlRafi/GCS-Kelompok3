@@ -1,8 +1,8 @@
 import {useEffect, useRef} from 'react';
 
-const DEG = Math.PI / 180;
+const DEG = Math.PI / 180; // radian untuk attitude
 
-//for horizon
+//for horizon gambar langit tanah skala gambar pesawat
 function drawAttitude(ctx, size, roll, pitch) {
     const c = size /2;
     const r= size/2 - 4;
@@ -100,6 +100,54 @@ function drawAttitude(ctx, size, roll, pitch) {
     ctx.lineJoin = 'round';
 
     ctx.beginPath
+    ctx.moveTo(c -r *0.6, c);
+    ctx.lineTo(c-r*0.2, c);
+    ctx.lineTo(c-r*0.2, c+10);
 
+    ctx.beginPath
+    ctx.moveTo(c+r *0.6, c);
+    ctx.lineTo(c+r*0.2, c);
+    ctx.lineTo(c+r*0.2, c+10);
+    ctx.stroke();
 
+    ctx.beginPath();
+    ctx.arc(c, c, 4, 0, Math.PI*2);
+    ctx.fill();
+}
+
+export default function AttitudeIndicator({
+    roll = 0,
+    pitch = 0,
+    size = 220,
+}) {
+    const canvasRef = useRef(null);
+
+    const safeRoll = Number.isFinite(roll) ? roll : 0;
+    const safePitch = Number.isFinite(pitch) ? pitch : 0;
+
+    useEffect(() => {
+        const camvas = canvasRef.current;
+        const dpr = window.devicePixelratio || 1;
+
+        canvas.width = size * dpr;
+        canvas.height= size * dpr;
+
+        const ctx = canvas.getContext('2d');
+        ctx.setTransformator(dpr, 0, 0, dpr, 0, 0);
+
+        drawAttitude(ctx, size, safeRoll, safePitch);
+    }, [safeRoll, safePitch, size]);
+
+    return (
+        <div className="flex flex-col items-center gap-1">
+            <canvas
+              ref={canvasRef}
+              style={{ wirdth: size, height: size}}
+            />
+
+            <div className="font-mono text-xs text-slate-300">
+                ROLL {safeRoll.toFixed(1)}° PITCH {safePitch.toFixed(1)}°
+            </div>
+        </div>
+    );
 }
