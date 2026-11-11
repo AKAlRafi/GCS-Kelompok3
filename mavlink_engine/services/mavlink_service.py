@@ -5,7 +5,7 @@ from .. import config
 
 logger = logging.getLogger(__name__)
 
-TYPES = ["GLOBAL_POSITION_INT", "ATTITUDE", "VFR_HUD"]
+TYPES = ["GLOBAL_POSITION_INT", "ATTITUDE", "VFR_HUD", "HEARTBEAT", "SYS_STATUS"]
 
 # Safety cap per read_messages() call
 MAX_MESSAGES_PER_READ = 500
@@ -67,7 +67,7 @@ class MavlinkService:
                     break
                 out.append(msg)
         except OSError as e:
-            self._log_limited(f"MAVLink read failed: {e}")
+            self.log_limited(f"MAVLink read failed: {e}")
             if timeout > 0:
                 time.sleep(timeout)     # A failing socket must not spin the caller
         return out
