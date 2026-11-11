@@ -5,13 +5,14 @@ const { Server } = require('socket.io');
 const { createClient } = require('redis');
 const path = require('path');
 const fs = require('fs');
-const { fileURLToPath } = require('url');
 require('dotenv').config();
 
-// Resolve file paths from this server file so the project can run from any working directory.
-const folder = path.dirname(fileURLToPath(__filename));
+// Resolve file paths from this server file.
+const folder = __dirname;
 const logFolder = path.join(folder, 'data', 'logs');
+
 fs.mkdirSync(logFolder, { recursive: true });
+
 
 // These values are shared by the API routes and the telemetry subscriber.
 let database;
