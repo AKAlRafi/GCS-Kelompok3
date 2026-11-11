@@ -17,6 +17,7 @@ class MavlinkService:
     def __init__(self):
         self.url = config.MAVLINK_URL
         self.conn = None    # Set by connect()
+        self.vehicle = None # sysid and compid of the autopilot, set by connect()
         self._last_error_time = 0.0     # For rate-limited logging
 
     def connect(self, heartbeat_timeout: float = 10.0) -> bool:
@@ -26,7 +27,7 @@ class MavlinkService:
         self.close()    # Calling connect() again must not leak the old socket
         try:
             self.conn = mavutil.mavlink_connection(self.url)
-            hb = self.conn.wait_heartbeat(timeout=heartbeat_timeout)
+            hb = self.wait_vehicle_heartbeat(heartbeat_timeout)
         except Exception as e:
             logger.error(f"MAVLink connection failed: {e}")
             self.close()
@@ -35,6 +36,7 @@ class MavlinkService:
             logger.error(f"No heartbeat within {heartbeat_timeout}s on {self.url}.")
             self.close()    # Release the socket, not just forget it
             return False
+        self.vehicle = (hb.get_srcSystem(), hb.get_srcComponent())
         # Log the heartbeat's own source next to conn.target_*: if they
         # differ (e.g. compid=0), check this before sending any command.
         logger.info(
@@ -43,15 +45,39 @@ class MavlinkService:
             f"target sysid={self.conn.target_system} compid={self.conn.target_component}"
         )
         return True
+    
+    def wait_vehicle_heartbeat(self, timeout: float):
+        """First heartbeat from a real autopilot, or None on timeout.
+        Heartbeats from GCS / companion components (autopilot=INVALID) are skipped."""
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            hb = self.conn.wait_heartbeat(timeout=remaining)
+            if hb is None:
+                return None
+            if hb.autopilot != mavutil.mavlink.MAV_AUTOPILOT_INVALID:
+                return hb
+            
+    def from_vehicle(self, msg) -> bool:
+        """Keep only our vehicle's messages. Other systems are dropped;
+        HEARTBEAT must also come from the same component."""
+        if self.vehicle is None:
+            return True
+        sysid, compid = self.vehicle
+        if msg.get_srcSystem() != sysid:
+            return False
+        if msg.get_type() == "HEARTBEAT" and msg.get_srcComponent() != compid:
+            return False
+        return True
 
     def read_messages(self, timeout: float = 0.0) -> list:
         """Return pending wanted messages (at most MAX_MESSAGES_PER_READ).
         timeout=0: never blocks.
         timeout>0: waits up to `timeout` secs for the FIRST message (wakes
         as soon as one arrives), then drains the rest without waiting.
-        Socket errors are logged (rate-limited); whatever was read so far
-        is returned.
-        """
+        Socket errors are logged (rate-limited)."""
         if not self.conn:
             return []
         out = []
@@ -60,12 +86,14 @@ class MavlinkService:
                 first = self.conn.recv_match(type=TYPES, blocking=True, timeout=timeout)
                 if first is None:
                     return out
-                out.append(first)
+                if self.from_vehicle(first):
+                    out.append(first)
             while len(out) < MAX_MESSAGES_PER_READ:
                 msg = self.conn.recv_match(type=TYPES, blocking=False)
                 if msg is None:
                     break
-                out.append(msg)
+                if self.from_vehicle(msg):
+                    out.append(msg)
         except OSError as e:
             self.log_limited(f"MAVLink read failed: {e}")
             if timeout > 0:
@@ -80,6 +108,7 @@ class MavlinkService:
             except Exception as e:
                 logger.warning(f"Error while closing MAVLink link: {e}")
             self.conn = None
+        self.vehicle = None
 
     def log_limited(self, message: str):
         """Log an error at most once per ERROR_LOG_INTERVAL."""
