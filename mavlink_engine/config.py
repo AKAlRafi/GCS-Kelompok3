@@ -20,3 +20,4 @@ ENABLE_COMMANDS = os.getenv("ENABLE_COMMANDS", "0") == "1"
 
 # Validation limits
 MAX_WAYPOINTS = int(os.getenv("MAX_WAYPOINTS", 100))
+MAX_ALTITUDE = float(os.getenv("MAX_ALTITUDE", 500))
