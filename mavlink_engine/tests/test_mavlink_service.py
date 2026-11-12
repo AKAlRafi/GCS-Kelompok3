@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from pymavlink import mavutil
 from mavlink_engine.services import mavlink_service
 from mavlink_engine.services.mavlink_service import MavlinkService
+import pytest
 
 INVALID = mavutil.mavlink.MAV_AUTOPILOT_INVALID
 
@@ -123,3 +124,130 @@ def test_close_resets_vehicle():
     s = _service_with_vehicle()
     s.close()
     assert s.conn is None and s.vehicle is None
+
+# ---- wait_for / backlog / send / target
+
+def _ack(command, sysid=1):
+    return SimpleNamespace(
+        get_type=lambda: "COMMAND_ACK", command=command,
+        get_srcSystem=lambda: sysid, get_srcComponent=lambda: 1,
+    )
+
+
+def _feeding(*msgs):
+    """Service whose recv_match yields msgs in order, then None forever.
+    Append to s.feed to simulate messages arriving later."""
+    s = MavlinkService()
+    s.conn = MagicMock()
+    s.vehicle = (1, 1)
+    s.feed = list(msgs)
+    s.conn.recv_match.side_effect = lambda **kw: s.feed.pop(0) if s.feed else None
+    return s
+
+
+def test_wait_for_returns_match_and_keeps_others_in_order():
+    a1, ack, a2 = _msg("ATTITUDE"), _ack(400), _msg("ATTITUDE")
+    s = _feeding(a1, ack, a2)
+    assert s.wait_for({"COMMAND_ACK"}, timeout=0.5) is ack
+    assert s.read_messages() == [a1, a2]
+
+
+def test_wait_for_match_skips_ack_of_other_command():
+    other, mine = _ack(21), _ack(400)
+    s = _feeding(other, mine)
+    got = s.wait_for({"COMMAND_ACK"}, timeout=0.5, match=lambda m: m.command == 400)
+    assert got is mine
+    assert s.read_messages() == [other]
+
+
+def test_wait_for_timeout_returns_none_and_keeps_messages():
+    att = _msg("ATTITUDE")
+    s = _feeding(att)
+    assert s.wait_for({"COMMAND_ACK"}, timeout=0.05) is None
+    assert s.read_messages() == [att]
+
+
+def test_wait_for_ignores_ack_from_other_system():
+    s = _feeding(_ack(400, sysid=2))
+    assert s.wait_for({"COMMAND_ACK"}, timeout=0.05) is None
+    assert s.read_messages() == []
+
+
+def test_wait_for_never_matches_messages_set_aside_earlier():
+    old = _ack(1)
+    s = _feeding(old)
+    # First wait: the ack does not match, so it is set aside
+    assert s.wait_for({"COMMAND_ACK"}, timeout=0.05, match=lambda m: m.command == 400) is None
+    # Second wait: it predates this request, so it must not count as the reply
+    assert s.wait_for({"COMMAND_ACK"}, timeout=0.05) is None
+    assert s.read_messages() == [old]
+
+
+def test_read_messages_returns_set_aside_first_then_new():
+    a1, a2 = _msg("ATTITUDE"), _msg("ATTITUDE")
+    s = _feeding(a1)
+    assert s.wait_for({"COMMAND_ACK"}, timeout=0.05) is None
+    s.feed.append(a2)
+    assert s.read_messages(timeout=0.1) == [a1, a2]
+
+
+def test_backlog_keeps_only_newest():
+    n = mavlink_service.MAX_BACKLOG + 200
+    msgs = [_msg("ATTITUDE") for _ in range(n)]
+    s = _feeding(*msgs)
+    assert s.wait_for({"COMMAND_ACK"}, timeout=0.05) is None
+    got = s.read_messages()
+    assert len(got) == mavlink_service.MAX_BACKLOG
+    assert got[0] is msgs[-mavlink_service.MAX_BACKLOG]
+    assert got[-1] is msgs[-1]
+
+
+def test_close_clears_backlog():
+    s = _feeding(_msg("ATTITUDE"))
+    s.wait_for({"COMMAND_ACK"}, timeout=0.05)
+    s.close()
+    assert s.read_messages() == []
+
+
+# ---- send
+
+def test_send_calls_pymavlink_helper():
+    s = MavlinkService()
+    s.conn = MagicMock()
+    assert s.send("command_long", 1, 1, 400) is True
+    s.conn.mav.command_long_send.assert_called_once_with(1, 1, 400)
+
+
+def test_send_without_connection_returns_false():
+    assert MavlinkService().send("command_long", 1, 1, 400) is False
+
+
+def test_send_unknown_message_raises():
+    s = MavlinkService()
+    s.conn = MagicMock()
+    s.conn.mav = SimpleNamespace()    # no *_send helpers at all
+    with pytest.raises(ValueError):
+        s.send("not_a_message")
+
+
+def test_send_socket_error_returns_false():
+    s = MavlinkService()
+    s.conn = MagicMock()
+    s.conn.mav.command_long_send.side_effect = OSError("socket closed")
+    assert s.send("command_long", 1, 1, 400) is False
+
+
+# ---- target
+
+def test_target_comes_from_vehicle_heartbeat_not_conn():
+    s = MavlinkService()
+    s.conn = MagicMock()
+    s.conn.target_system = 1
+    s.conn.target_component = 0    # the compid=0 case seen on the first heartbeat
+    s.vehicle = (1, 1)
+    assert (s.target_system, s.target_component) == (1, 1)
+
+
+def test_target_is_zero_when_not_connected():
+    s = MavlinkService()
+    assert (s.target_system, s.target_component) == (0, 0)
