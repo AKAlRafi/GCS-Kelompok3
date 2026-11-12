@@ -22,6 +22,7 @@ RESUBSCRIBE_DELAY = 5.0
 # Max messages per read_command() call
 MAX_COMMAND_SCAN = 50
 
+
 class RedisService:
     """Thin wrapper around redis-py for publishing telemetry JSON."""
     def __init__(self):
@@ -73,9 +74,13 @@ class RedisService:
         if not self.commands_enabled or not self.client:
             return False
         try:
-            pubsub = self.client.pubsub()
+            pubsub = self.client.pubsub(ignore_subscribe_messages=True)
             pubsub.subscribe(self.command_channel)
         except redis.RedisError as e:
+            try:
+                pubsub.close()
+            except Exception:
+                pass
             self._resubscribe_at = time.monotonic() + RESUBSCRIBE_DELAY
             self.log_limited(f"Subscribe to {self.command_channel} failed: {e}")
             return False
@@ -96,7 +101,7 @@ class RedisService:
         Messages that are not valid JSON objects are logged and skipped.
         Always None while commands are disabled.
         """
-        if not self.command_channel or not self.client:
+        if not self.commands_enabled or not self.client:
             return None
         if self.pubsub is None:
             if time.monotonic() < self._resubscribe_at or not self.subscribe_commands():
@@ -117,10 +122,10 @@ class RedisService:
             try: 
                 command = json.loads(msg["data"])
             except (TypeError, ValueError) as e:
-                self.log_limited(f"Ignoring commands that is not valid JSON: {e}")
+                self.log_limited(f"Ignoring command that is not valid JSON: {e}")
                 continue
             if not isinstance(command, dict):
-                self.log_limited("Ignoring commands that is not a JSON object")
+                self.log_limited("Ignoring command that is not a JSON object")
                 continue
             return command
         return None
