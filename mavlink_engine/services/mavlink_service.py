@@ -32,6 +32,9 @@ class MavlinkService:
         self.backlog = []   # Set by wait_for()
         self._last_error_time = 0.0     # For rate-limited logging
 
+    def master(self):
+        return self.conn
+
     def connect(self, heartbeat_timeout: float = 10.0) -> bool:
         """Open the link and wait for the first heartbeat.
         Returns True on success, False on timeout or error.
