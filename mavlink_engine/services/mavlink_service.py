@@ -82,12 +82,10 @@ class MavlinkService:
         self.vehicle = None
 
     # Target
-    @property
     def target_system(self) -> int:
         """System id commands are addressed to (0 while not connected)."""
         return self.vehicle[0] if self.vehicle else 0
     
-    @property
     def target_component(self) -> int:
         """Component id commands are addressed to (0 while not connected)."""
         return self.vehicle[1] if self.vehicle else 0

@@ -245,9 +245,9 @@ def test_target_comes_from_vehicle_heartbeat_not_conn():
     s.conn.target_system = 1
     s.conn.target_component = 0    # the compid=0 case seen on the first heartbeat
     s.vehicle = (1, 1)
-    assert (s.target_system, s.target_component) == (1, 1)
+    assert (s.target_system(), s.target_component()) == (1, 1)
 
 
 def test_target_is_zero_when_not_connected():
     s = MavlinkService()
-    assert (s.target_system, s.target_component) == (0, 0)
+    assert (s.target_system(), s.target_component()) == (0, 0)
