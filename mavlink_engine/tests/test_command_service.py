@@ -360,56 +360,103 @@ def test_force_arm_denied_without_flag(command_service, mock_mavlink, monkeypatc
     mock_mavlink.master.mav.command_long_send.assert_not_called()
 
 
-def test_takeoff_success(command_service, mock_mavlink):
+def test_takeoff_uses_takeoff_mode(command_service, mock_mavlink):
+    mock_mavlink.master.mode_mapping.return_value = {"AUTO": 10, "TAKEOFF": 13, "LOITER": 12}
     mock_mavlink.wait_for.return_value = make_ack(
-        mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, mavutil.mavlink.MAV_RESULT_ACCEPTED
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE, mavutil.mavlink.MAV_RESULT_ACCEPTED
     )
 
-    result = command_service.execute_command({"command": "takeoff", "altitude_m": 10})
+    result = command_service.execute_command({"command": "takeoff", "altitude_m": 30})
 
     assert result["ok"] is True
+    assert result["command"] == "takeoff"
+    assert "TKOFF_ALT" in result["note"]
     mock_mavlink.master.mav.command_long_send.assert_called_once_with(
-        1, 1, mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0,
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0,
+        1, 1, mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+        float(mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED), 13.0,
+        0.0, 0.0, 0.0, 0.0, 0.0,
     )
 
 
-def test_takeoff_invalid_altitude(command_service, mock_mavlink):
-    result = command_service.execute_command({"command": "takeoff", "altitude_m": 0})
+def test_takeoff_altitude_is_optional_but_checked(command_service, mock_mavlink):
+    mock_mavlink.master.mode_mapping.return_value = {"TAKEOFF": 13}
+    mock_mavlink.wait_for.return_value = make_ack(
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE, mavutil.mavlink.MAV_RESULT_ACCEPTED
+    )
+    assert command_service.execute_command({"command": "takeoff"})["ok"] is True
+
+    bad = command_service.execute_command({"command": "takeoff", "altitude_m": 0})
+    assert bad["ok"] is False
+
+
+def test_takeoff_unsupported_when_mode_missing(command_service, mock_mavlink):
+    mock_mavlink.master.mode_mapping.return_value = {"AUTO": 10}
+
+    result = command_service.execute_command({"command": "takeoff"})
 
     assert result["ok"] is False
-    mock_mavlink.master.mav.command_long_send.assert_not_called()
+    assert "unsupported flight mode" in result["error"].lower()
 
 
-def test_guided_goto_sends_position_target(command_service, mock_mavlink):
-    result = command_service.execute_command(
-        {"command": "guided_goto", "lat": -7.5, "lon": 110.5, "alt": 20}
+def test_start_mission_sets_auto(command_service, mock_mavlink):
+    mock_mavlink.master.mode_mapping.return_value = {"AUTO": 10}
+    mock_mavlink.wait_for.return_value = make_ack(
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE, mavutil.mavlink.MAV_RESULT_ACCEPTED
     )
 
-    assert result["ok"] is True
-    args = mock_mavlink.master.mav.set_position_target_global_int_send.call_args.args
-    assert args[5] == -75000000 and args[6] == 1105000000 and args[7] == 20.0
+    result = command_service.execute_command({"command": "start_mission"})
+
+    assert result["ok"] is True and result["command"] == "start_mission"
+    assert mock_mavlink.master.mav.command_long_send.call_args.args[5] == 10.0
 
 
-def test_change_speed_and_yaw(command_service, mock_mavlink):
+def test_pause_uses_loiter_and_resume_uses_auto(command_service, mock_mavlink):
+    mock_mavlink.master.mode_mapping.return_value = {"AUTO": 10, "LOITER": 12}
+    mock_mavlink.wait_for.return_value = make_ack(
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE, mavutil.mavlink.MAV_RESULT_ACCEPTED
+    )
+
+    assert command_service.execute_command({"command": "pause_mission"})["ok"] is True
+    assert mock_mavlink.master.mav.command_long_send.call_args.args[5] == 12.0
+    assert command_service.execute_command({"command": "resume_mission"})["ok"] is True
+    assert mock_mavlink.master.mav.command_long_send.call_args.args[5] == 10.0
+
+
+def test_guided_goto_uses_do_reposition(command_service, mock_mavlink):
+    mock_mavlink.wait_for.return_value = make_ack(
+        mavutil.mavlink.MAV_CMD_DO_REPOSITION, mavutil.mavlink.MAV_RESULT_ACCEPTED
+    )
+
+    result = command_service.execute_command(
+        {"command": "guided_goto", "lat": -7.5, "lon": 110.5, "alt": 80}
+    )
+
+    assert result["ok"] is True and result["command"] == "guided_goto"
+    args = mock_mavlink.master.mav.command_int_send.call_args.args
+    assert args[3] == mavutil.mavlink.MAV_CMD_DO_REPOSITION
+    assert args[10] == -75000000 and args[11] == 1105000000 and args[12] == 80.0
+
+
+def test_change_speed_is_airspeed(command_service, mock_mavlink):
     mock_mavlink.wait_for.return_value = make_ack(
         mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, mavutil.mavlink.MAV_RESULT_ACCEPTED
     )
-    assert command_service.execute_command({"command": "change_speed", "speed_mps": 5})["ok"] is True
 
-    mock_mavlink.wait_for.return_value = make_ack(
-        mavutil.mavlink.MAV_CMD_CONDITION_YAW, mavutil.mavlink.MAV_RESULT_ACCEPTED
-    )
-    result = command_service.execute_command({
-        "command": "condition_yaw", "angle_deg": 90, "speed_deg_s": 30,
-        "direction": 1, "relative": False,
-    })
+    result = command_service.execute_command({"command": "change_speed", "speed_mps": 18})
+
     assert result["ok"] is True
+    args = mock_mavlink.master.mav.command_long_send.call_args.args
+    assert args[4] == 0.0 and args[5] == 18.0     # param1=0 airspeed, param2=speed
 
 
 def test_change_speed_out_of_range(command_service):
-    result = command_service.execute_command({"command": "change_speed", "speed_mps": 100})
+    assert command_service.execute_command({"command": "change_speed", "speed_mps": 100})["ok"] is False
+
+
+def test_condition_yaw_not_available_on_plane(command_service):
+    result = command_service.execute_command({"command": "condition_yaw", "angle_deg": 90})
     assert result["ok"] is False
+    assert "not allowed" in result["error"].lower()
 
 
 def test_command_ack_timeout(command_service, mock_mavlink):

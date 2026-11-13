@@ -1,4 +1,4 @@
-"""MAVLink command service: validate JSON commands and dispatch to vehicle."""
+"""MAVLink command service for ArduPlane (fixed wing)."""
 
 import logging
 import time
@@ -8,7 +8,7 @@ from .. import config
 logger = logging.getLogger(__name__)
 
 ALLOWED_COMMANDS = {"arm", "disarm", "set_mode", "mode", "rtl", "land", "takeoff", "guided_goto",
-                    "condition_yaw", "change_speed", "start_mission", "pause_mission", "resume_mission"}
+                    "change_speed", "start_mission", "pause_mission", "resume_mission"}
 
 # MAVLink command acknowledgment result codes (MAV_RESULT)
 COMMAND_RESULT_NAMES = {
@@ -23,12 +23,13 @@ COMMAND_RESULT_NAMES = {
 
 
 class CommandService:
-    def __init__(self, mavlink_service, timeout: float = config.COMMAND_TIMEOUT):
+    def __init__(self, mavlink_service, timeout: float = 3.0):
         self.mavlink = mavlink_service
-        self.timeout = timeout
-        self.enabled = config.ENABLE_COMMANDS
+        self.timeout = getattr(config, "COMMAND_TIMEOUT", timeout)
+        self.enabled = getattr(config, "ENABLE_COMMANDS", False)
 
     def is_connected(self) -> bool:
+        """Check whether the MAVLink master connection is active."""
         return self.mavlink is not None and self.mavlink.master() is not None
 
     def extract_params(self, payload: dict) -> dict:
@@ -57,7 +58,7 @@ class CommandService:
                 return False, "Parameter 'force' must be a boolean", cmd, params
             if "arm" in params and not isinstance(params["arm"], bool):
                 return False, "Parameter 'arm' must be a boolean", cmd, params
-            if params.get("force") and not config.ALLOW_FORCE_ARM:
+            if params.get("force") and not getattr(config, "ALLOW_FORCE_ARM", False):
                 return False, "Force arm/disarm is disabled", cmd, params
         elif cmd in ("set_mode", "mode"):
             mode_val = params.get("mode")
@@ -69,18 +70,14 @@ class CommandService:
             v = params.get(key)
             return isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
 
-        max_alt = config.MAX_ALTITUDE
-        if cmd == "takeoff" and not _num("altitude_m", 1, max_alt):
+        max_alt = getattr(config, "MAX_ALTITUDE", 500)
+        # Plane climbs to TKOFF_ALT on the FC, so altitude_m is optional (checked if given)
+        if cmd == "takeoff" and "altitude_m" in params and not _num("altitude_m", 1, max_alt):
             return False, "altitude_m out of range", cmd, params
         if cmd == "guided_goto" and not (_num("lat", -90, 90) and _num("lon", -180, 180) and _num("alt", 1, max_alt)):
             return False, "guided_goto needs valid lat, lon, alt", cmd, params
-        if cmd == "condition_yaw" and not (
-            _num("angle_deg", 0, 360) and _num("speed_deg_s", 0.1, 180)
-            and params.get("direction") in (-1, 1) and isinstance(params.get("relative"), bool)
-        ):
-            return False, "Invalid condition_yaw payload", cmd, params
-        if cmd == "change_speed" and not _num("speed_mps", 0.5, 25):
-            return False, "speed_mps must be 0.5-25", cmd, params
+        if cmd == "change_speed" and not _num("speed_mps", 0.5, 50):
+            return False, "speed_mps must be 0.5-50", cmd, params
 
         return True, "", cmd, params
 
@@ -98,7 +95,7 @@ class CommandService:
             if msg is None:
                 break
             if msg.result == mavutil.mavlink.MAV_RESULT_IN_PROGRESS:
-                logger.info(f"Command '{command_name}' in progress.")
+                logger.info(f"Command '{command_name}' in progress...")
                 continue
             if msg.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
                 logger.info(f"Command '{command_name}' accepted by vehicle")
@@ -166,6 +163,52 @@ class CommandService:
             f"set_mode:{mode_name}",
         )
 
+    def handle_long(self, command_id, name, **p):
+        self.send_command_long(command_id, **p)
+        return self.wait_command_ack(command_id, name)
+
+    @staticmethod
+    def _renamed(result: dict, name: str, note: str | None = None) -> dict:
+        """Re-label a set_mode result so the ack carries the command the caller sent."""
+        if not result.get("ok"):
+            return result
+        out = {**result, "command": name}
+        if note:
+            out["note"] = note
+        return out
+
+    def handle_takeoff(self) -> dict:
+        """ArduPlane rejects NAV_TAKEOFF as a direct command, so use TAKEOFF mode.
+        The climb altitude comes from the FC parameter TKOFF_ALT."""
+        return self._renamed(
+            self.handle_set_mode("TAKEOFF"), "takeoff",
+            "Plane climbs to TKOFF_ALT set on the FC; altitude_m is not sent",
+        )
+
+    def handle_start_mission(self) -> dict:
+        return self._renamed(self.handle_set_mode("AUTO"), "start_mission")
+
+    def handle_change_speed(self, speed):
+        # param1 = 0 -> airspeed, param3 = -1 -> no throttle change
+        return self.handle_long(mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, "change_speed",
+                                param1=0.0, param2=float(speed), param3=-1.0)
+
+    def handle_guided_goto(self, lat, lon, alt):
+        """DO_REPOSITION (the command GCS 'go to' uses); switches the plane to GUIDED."""
+        master = self.mavlink.master()
+        master.mav.command_int_send(
+            master.target_system, master.target_component,
+            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+            mavutil.mavlink.MAV_CMD_DO_REPOSITION,
+            0, 0,
+            -1.0,   # speed: default
+            1.0,    # flags: change mode to GUIDED
+            0.0,    # radius: default
+            float("nan"),   # yaw: unchanged
+            int(round(lat * 1e7)), int(round(lon * 1e7)), float(alt),
+        )
+        return self.wait_command_ack(mavutil.mavlink.MAV_CMD_DO_REPOSITION, "guided_goto")
+
     def handle_rtl(self) -> dict:
         self.send_command_long(mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
         return self.wait_command_ack(
@@ -179,36 +222,6 @@ class CommandService:
             mavutil.mavlink.MAV_CMD_NAV_LAND,
             "land",
         )
-    
-    def handle_long(self, command_id, name, **p):
-        self.send_command_long(command_id, **p)
-        return self.wait_command_ack(command_id, name)
-
-    def handle_takeoff(self, alt):
-        return self.handle_long(mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, "takeoff", param7=float(alt))
-
-    def handle_condition_yaw(self, angle, speed, direction, relative):
-        return self.handle_long(mavutil.mavlink.MAV_CMD_CONDITION_YAW, "condition_yaw",
-                                param1=float(angle), param2=float(speed),
-                                param3=float(direction), param4=1.0 if relative else 0.0)
-
-    def handle_change_speed(self, speed):
-        return self.handle_long(mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, "change_speed",
-                                param1=1.0, param2=float(speed), param3=-1.0)
-
-    def handle_start_mission(self):
-        return self.handle_long(mavutil.mavlink.MAV_CMD_MISSION_START, "start_mission")
-
-    def handle_guided_goto(self, lat, lon, alt):
-        master = self.mavlink.master()
-        master.mav.set_position_target_global_int_send(
-            0, master.target_system, master.target_component,
-            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-            0b110111111000,                     # position only
-            int(round(lat * 1e7)), int(round(lon * 1e7)), float(alt),
-            0, 0, 0, 0, 0, 0, 0, 0
-        )
-        return {"ok": True, "command": "guided_goto", "result": "SENT"}   # No ACK exists for this message
 
     def execute_command(self, payload: dict) -> dict:
         """Validate and execute an allowed vehicle command."""
@@ -220,7 +233,6 @@ class CommandService:
         if not valid:
             return {"ok": False, "error": err_msg}
         logger.info(f"Executing command '{cmd}' with params={params}")
-        
         try:
             if cmd == "arm":
                 arm_flag = params.get("arm", True)
@@ -236,21 +248,17 @@ class CommandService:
             if cmd == "land":
                 return self.handle_land()
             if cmd == "takeoff":
-                return self.handle_takeoff(params["altitude_m"])
+                return self.handle_takeoff()
             if cmd == "guided_goto":
                 return self.handle_guided_goto(params["lat"], params["lon"], params["alt"])
-            if cmd == "condition_yaw":
-                return self.handle_condition_yaw(params["angle_deg"], params["speed_deg_s"],
-                                                params["direction"], params["relative"])
             if cmd == "change_speed":
                 return self.handle_change_speed(params["speed_mps"])
             if cmd == "start_mission":
                 return self.handle_start_mission()
             if cmd == "pause_mission":
-                return self.handle_set_mode("BRAKE")
+                return self.handle_set_mode("LOITER")
             if cmd == "resume_mission":
                 return self.handle_set_mode("AUTO")
-            
         except OSError as e:
             logger.error(f"Connection error executing command '{cmd}': {e}")
             return {"ok": False, "error": f"Connection error: {e}"}
