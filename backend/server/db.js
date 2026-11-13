@@ -46,6 +46,15 @@ database.exec(`
     armed INTEGER,
     FOREIGN KEY (log_id) REFERENCES flight_logs(id) ON DELETE SET NULL
   );
+  CREATE TABLE IF NOT EXISTS missions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    file_name TEXT NOT NULL UNIQUE,
+    waypoint_count INTEGER NOT NULL,
+    total_distance_m REAL NOT NULL DEFAULT 0,
+    estimated_flight_time_s REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE INDEX IF NOT EXISTS idx_telemetry_log_time
     ON telemetry_records(log_id, recorded_at);
 `);
@@ -135,6 +144,26 @@ function getFlightLog(id) {
   return database.prepare('SELECT * FROM flight_logs WHERE id = ?').get(id);
 }
 
+function createMission({ name, fileName, waypointCount, totalDistanceM, estimatedFlightTimeS }) {
+  const result = database.prepare(`
+    INSERT INTO missions (name, file_name, waypoint_count, total_distance_m, estimated_flight_time_s)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(name, fileName, waypointCount, totalDistanceM, estimatedFlightTimeS);
+  return Number(result.lastInsertRowid);
+}
+
+function listMissions() {
+  return database.prepare('SELECT * FROM missions ORDER BY id DESC').all();
+}
+
+function getMission(id) {
+  return database.prepare('SELECT * FROM missions WHERE id = ?').get(id);
+}
+
+function deleteMission(id) {
+  return database.prepare('DELETE FROM missions WHERE id = ?').run(id).changes > 0;
+}
+
 function normalizeTelemetryRecord(record) {
   const values = {};
   for (const column of telemetryColumns) {
@@ -193,6 +222,10 @@ module.exports = {
   finishFlightLog,
   listFlightLogs,
   getFlightLog,
+  createMission,
+  listMissions,
+  getMission,
+  deleteMission,
   saveTelemetry,
   flushTelemetry,
   getTelemetryQueueStatus,
