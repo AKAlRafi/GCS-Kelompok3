@@ -4,3 +4,5 @@ data/*.db-wal
 data/logs/*
 !data/.gitkeep
 !data/logs/.gitkeep
+.env
+.env*
