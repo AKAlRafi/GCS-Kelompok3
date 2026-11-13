@@ -115,11 +115,16 @@ function importMission(rawText, name) {
   return storeMission(name || 'impor', waypoints, `${rawText.trim()}\n`);
 }
 
-function readMission(id) {
+function getStoredMissionFile(id) {
   const mission = database.getMission(id);
   if (!mission) throw apiError('Misi tidak ditemukan.', 404, 'MISSION_NOT_FOUND');
   const filePath = path.resolve(config.missionFolder, mission.file_name);
   if (path.dirname(filePath) !== path.resolve(config.missionFolder) || !fs.existsSync(filePath)) throw apiError('File misi tidak ditemukan.', 404, 'MISSION_FILE_NOT_FOUND');
+  return { mission, filePath, fileName: mission.file_name };
+}
+
+function readMission(id) {
+  const { mission, filePath } = getStoredMissionFile(id);
   const waypoints = parseWaypointText(fs.readFileSync(filePath, 'utf8'));
   const details = waypoints.map((waypoint, index) => {
     const previous = waypoints[index - 1];
@@ -138,18 +143,13 @@ function readMission(id) {
 }
 
 function getMissionFile(id) {
-  const mission = database.getMission(id);
-  if (!mission) throw apiError('Misi tidak ditemukan.', 404, 'MISSION_NOT_FOUND');
-  const filePath = path.resolve(config.missionFolder, mission.file_name);
-  if (path.dirname(filePath) !== path.resolve(config.missionFolder) || !fs.existsSync(filePath)) throw apiError('File misi tidak ditemukan.', 404, 'MISSION_FILE_NOT_FOUND');
-  return { filePath, fileName: mission.file_name };
+  const { filePath, fileName } = getStoredMissionFile(id);
+  return { filePath, fileName };
 }
 
 function deleteMission(id) {
-  const mission = database.getMission(id);
-  if (!mission) throw apiError('Misi tidak ditemukan.', 404, 'MISSION_NOT_FOUND');
-  const file = getMissionFile(id);
-  try { fs.unlinkSync(file.filePath); }
+  const { mission, filePath } = getStoredMissionFile(id);
+  try { fs.unlinkSync(filePath); }
   catch (error) { throw apiError(`File misi gagal dihapus: ${error.message}`, 500, 'MISSION_FILE_ERROR'); }
   database.deleteMission(id);
   return { ok: true, id: Number(id) };
@@ -212,7 +212,14 @@ async function startMission(id, reportProgress = () => {}) {
 }
 
 module.exports = {
-  createMission, importMission, listMissions: () => database.listMissions(), readMission,
-  getMissionFile, deleteMission, parseWaypointText, waypointFileText, checkPreflight,
-  uploadMissionToDrone, startMission
+  createMission, importMission, listMissions: () => 
+  database.listMissions(), 
+  readMission,
+  getMissionFile, 
+  deleteMission, 
+  parseWaypointText, 
+  waypointFileText, 
+  checkPreflight,
+  uploadMissionToDrone, 
+  startMission
 };

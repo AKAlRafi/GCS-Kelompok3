@@ -5,11 +5,15 @@ function validCoordinate(value, min, max) {
   return Number.isFinite(Number(value)) && Number(value) >= min && Number(value) <= max;
 }
 
-function hitungJarakMeter(lat1, lon1, lat2, lon2) {
+function validateCoordinates(lat1, lon1, lat2, lon2) {
   if (![validCoordinate(lat1, -90, 90), validCoordinate(lat2, -90, 90),
     validCoordinate(lon1, -180, 180), validCoordinate(lon2, -180, 180)].every(Boolean)) {
     throw new Error('Koordinat harus berupa latitude dan longitude yang valid.');
   }
+}
+
+function hitungJarakMeter(lat1, lon1, lat2, lon2) {
+  validateCoordinates(lat1, lon1, lat2, lon2);
   const dLat = (Number(lat2) - Number(lat1)) * RAD;
   const dLon = (Number(lon2) - Number(lon1)) * RAD;
   const a = Math.sin(dLat / 2) ** 2
@@ -18,10 +22,7 @@ function hitungJarakMeter(lat1, lon1, lat2, lon2) {
 }
 
 function hitungArahBearing(lat1, lon1, lat2, lon2) {
-  if (![validCoordinate(lat1, -90, 90), validCoordinate(lat2, -90, 90),
-    validCoordinate(lon1, -180, 180), validCoordinate(lon2, -180, 180)].every(Boolean)) {
-    throw new Error('Koordinat harus berupa latitude dan longitude yang valid.');
-  }
+  validateCoordinates(lat1, lon1, lat2, lon2);
   const fromLat = Number(lat1) * RAD;
   const toLat = Number(lat2) * RAD;
   const dLon = (Number(lon2) - Number(lon1)) * RAD;
