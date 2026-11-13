@@ -223,10 +223,10 @@ class MissionService:
                 master.target_component,
                 mavutil.mavlink.MAV_MISSION_ACCEPTED,
             )
-            logger.info(f"Mission download succeeded: {len(waypoints)} waypoints")
             waypoints = waypoints[1:]
             for i, wp in enumerate(waypoints):
                 wp["seq"] = i
+            logger.info(f"Mission download succeeded: {len(waypoints)} waypoints")
             return {"ok": True, "count": len(waypoints), "waypoints": waypoints}
         except OSError as e:
             logger.error(f"Mission download connection error: {e}")
