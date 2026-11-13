@@ -177,3 +177,35 @@ def test_run_publishes_telemetry_and_dispatches_commands():
         )
         mav.close.assert_called_once()
         redis_svc.close.assert_called_once()
+
+# --- Heartbeat reporter (prints only on change) ---
+
+def test_heartbeat_reporter_prints_only_on_change():
+    from mavlink_engine.main import HeartbeatReporter
+    lines = []
+    hb = HeartbeatReporter(5.0, out=lambda text, **kw: lines.append(text))
+
+    hb.on_heartbeat({"flight_mode": "STABILIZE", "armed": False}, 1, 0.0)
+    hb.on_heartbeat({"flight_mode": "STABILIZE", "armed": False}, 1, 1.0)   # same: silent
+    hb.on_heartbeat({"flight_mode": "STABILIZE", "armed": False}, 1, 2.0)   # same: silent
+    assert len(lines) == 1 and "first heartbeat" in lines[0]
+
+    hb.on_heartbeat({"flight_mode": "GUIDED", "armed": False}, 1, 3.0)
+    assert len(lines) == 2 and "changed" in lines[1]
+
+
+def test_heartbeat_reporter_lost_and_resumed_once():
+    from mavlink_engine.main import HeartbeatReporter
+    lines = []
+    hb = HeartbeatReporter(5.0, out=lambda text, **kw: lines.append(text))
+
+    hb.on_heartbeat({"flight_mode": "AUTO", "armed": True}, 1, 0.0)
+    hb.check(3.0)       # not stale yet
+    hb.check(6.0)       # lost
+    hb.check(7.0)       # still lost: silent
+    hb.check(8.0)
+    assert sum("LOST" in l for l in lines) == 1
+
+    hb.on_heartbeat({"flight_mode": "AUTO", "armed": True}, 1, 9.0)
+    assert sum("resumed" in l for l in lines) == 1
+    assert len(lines) == 3

@@ -37,58 +37,15 @@ def open_link(url: str):
 
 class MavlinkService:
     """Holds one MAVLink connection."""
-    def __init__(self, print_heartbeat: bool = True):
+    def __init__(self):
         self.url = config.MAVLINK_URL
         self.conn = None    # Set by connect()
         self.vehicle = None # sysid and compid of the autopilot, set by connect()
         self.backlog = []   # Set by wait_for()
         self._last_error_time = 0.0     # For rate-limited logging
-        self.print_heartbeat = print_heartbeat
-        self._hb_count = 0
 
     def master(self):
         return self.conn
-
-    def _print_heartbeat(self, msg, prefix: str = "HEARTBEAT", check_type: bool = True):
-        """Format and print incoming HEARTBEAT details safely (supports mock objects)."""
-        if not self.print_heartbeat:
-            return
-        if check_type:
-            get_type = getattr(msg, "get_type", None)
-            if not callable(get_type) or get_type() != "HEARTBEAT":
-                return
-
-        self._hb_count += 1
-        timestamp = time.strftime("%H:%M:%S")
-
-        get_sys = getattr(msg, "get_srcSystem", None)
-        get_comp = getattr(msg, "get_srcComponent", None)
-        sysid = get_sys() if callable(get_sys) else getattr(msg, "srcSystem", "?")
-        compid = get_comp() if callable(get_comp) else getattr(msg, "srcComponent", "?")
-
-        base_mode = getattr(msg, "base_mode", None)
-        if isinstance(base_mode, int):
-            armed = bool(base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
-            arm_str = "ARMED" if armed else "DISARMED"
-        else:
-            arm_str = "UNKNOWN"
-
-        if hasattr(msg, "custom_mode"):
-            try:
-                mode_str = mavutil.mode_string_v10(msg)
-            except Exception:
-                mode_str = f"CUSTOM({msg.custom_mode})"
-        else:
-            mode_str = "UNKNOWN"
-
-        status = getattr(msg, "system_status", "?")
-
-        print(
-            f"[{timestamp}] [{prefix} #{self._hb_count}] "
-            f"sysid={sysid} compid={compid} | "
-            f"mode={mode_str} | {arm_str} | status={status}",
-            flush=True,
-        )
 
     def connect(self, heartbeat_timeout: float = 10.0) -> bool:
         """Open the link and wait for the first heartbeat.
@@ -126,13 +83,11 @@ class MavlinkService:
             if hb is None:
                 return None
             if hb.autopilot != mavutil.mavlink.MAV_AUTOPILOT_INVALID:
-                self._print_heartbeat(hb, prefix="INITIAL HEARTBEAT", check_type=False)
                 return hb
 
     def close(self):
         """Close the link and reset the connection."""
         self.backlog = []
-        self._hb_count = 0
         if self.conn:
             try:
                 self.conn.close()
@@ -184,14 +139,12 @@ class MavlinkService:
                 if first is None:
                     return out
                 if self.from_vehicle(first):
-                    self._print_heartbeat(first)
                     out.append(first)
             while len(out) < limit:
                 msg = self.conn.recv_match(type=TYPES, blocking=False)
                 if msg is None:
                     break
                 if self.from_vehicle(msg):
-                    self._print_heartbeat(msg)
                     out.append(msg)
         except OSError as e:
             self.log_limited(f"MAVLink read failed: {e}")
@@ -233,6 +186,8 @@ class MavlinkService:
             self.log_limited(f"MAVLink send {name} failed: {e}")
             return False
         return True
+
+
 
     def log_limited(self, message: str):
         """Log an error at most once per ERROR_LOG_INTERVAL."""

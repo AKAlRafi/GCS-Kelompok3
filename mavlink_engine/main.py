@@ -23,20 +23,67 @@ WAIT_TIMEOUT = 0.1               # Max wait for a message; the loop still wakes 
 MIN_PUBLISH_INTERVAL = config.PUBLISH_INTERVAL
 RECONNECT_DELAY = 5.0            # Time in seconds between reconnect attempts
 MAX_PUBLISH_FAILS = 20           # Consecutive failures before reconnecting Redis
-DEFAULT_STALE_AFTER = 2.0                # A message type silent this long = stale data
-STALE_AFTER = {"HEARTBEAT": 5.0, "SYS_STATUS": 5.0}
+DEFAULT_STALE_AFTER = 2.0
+STALE_AFTER = {"HEARTBEAT": 5.0, "SYS_STATUS": 5.0, "GPS_RAW_INT": 5.0}
+HOME_REQUEST_INTERVAL = 5.0
 PARSE_ERROR_LOG_INTERVAL = 5.0   # Avoid log spam
 MAX_COMMANDS_PER_TICK = 10       # Cap command processing per loop iteration
-HOME_REQUEST_INTERVAL = 5.0
 
-MISSION_COMMANDS = ("upload_mission", "download_mission", "clear_mission")
+
+def serial_ports_hint() -> str:
+    """List serial ports the computer can see (helps when the FC is not found)."""
+    try:
+        from serial.tools import list_ports
+        ports = [f"{p.device} ({p.description})" for p in list_ports.comports()]
+    except ImportError:
+        return "pyserial is not installed (pip install pyserial)"
+    return ", ".join(ports) if ports else "none found"
 
 
 def connect_mavlink(mav) -> None:
     """Block until the first heartbeat arrives (retry forever)."""
+    print(f"[MAVLINK] Connecting to {mav.url} ...", flush=True)
+    first_failure = True
     while not mav.connect():
+        if first_failure and str(mav.url).lower().startswith("serial:"):
+            print(f"[MAVLINK] No heartbeat. Serial ports seen: {serial_ports_hint()}", flush=True)
+        first_failure = False
         logger.warning(f"Retrying MAVLink in {RECONNECT_DELAY}s")
         time.sleep(RECONNECT_DELAY)
+
+
+class HeartbeatReporter:
+    """Prints heartbeat status only when something changes, so the console stays quiet:
+    first heartbeat, mode/armed change, heartbeat lost, heartbeat resumed."""
+
+    def __init__(self, stale_after: float, out=print):
+        self.stale_after = stale_after
+        self.out = out
+        self.seen = False
+        self.lost = False
+        self.last_time = 0.0
+        self.last = (None, None)    # (flight_mode, armed)
+
+    def _say(self, text: str):
+        self.out(f"[HEARTBEAT] {time.strftime('%H:%M:%S')} {text}", flush=True)
+
+    def on_heartbeat(self, parsed: dict, sysid: int, now: float):
+        current = (parsed.get("flight_mode"), parsed.get("armed"))
+        if not self.seen:
+            self.seen = True
+            self._say(f"first heartbeat from sysid={sysid}: mode={current[0]} armed={current[1]}")
+        elif self.lost:
+            self.lost = False
+            self._say(f"resumed: mode={current[0]} armed={current[1]}")
+        elif current != self.last:
+            self._say(f"changed: mode={current[0]} armed={current[1]}")
+        self.last = current
+        self.last_time = now
+
+    def check(self, now: float):
+        if self.seen and not self.lost and now - self.last_time > self.stale_after:
+            self.lost = True
+            self._say(f"LOST (no heartbeat for more than {self.stale_after:.0f}s)")
 
 
 def clean(data: dict) -> dict:
@@ -45,6 +92,9 @@ def clean(data: dict) -> dict:
         k: (None if isinstance(v, float) and not math.isfinite(v) else v)
         for k, v in data.items()
     }
+
+
+MISSION_COMMANDS = ("upload_mission", "download_mission", "clear_mission")
 
 
 def dispatch_command(payload, command_svc, mission_svc) -> dict:
@@ -63,7 +113,7 @@ def dispatch_command(payload, command_svc, mission_svc) -> dict:
     else:
         name = raw_name.strip().lower()
         if name in MISSION_COMMANDS:
-            if not config.ENABLE_COMMANDS:
+            if not getattr(config, "ENABLE_COMMANDS", False):
                 res = {"ok": False, "error": "Commands are disabled (ENABLE_COMMANDS=0)"}
             elif name == "upload_mission":
                 res = mission_svc.upload_mission(inner.get("waypoints"))
@@ -116,6 +166,7 @@ def run() -> None:
     last_parse_error = 0.0
     stale_warned = False
     last_home_req = 0.0
+    heartbeat = HeartbeatReporter(STALE_AFTER["HEARTBEAT"])
 
     try:
         connect_mavlink(mav)
@@ -137,16 +188,21 @@ def run() -> None:
                     state.update(parsed)
                     last_seen[msg.get_type()] = time.monotonic()
                     dirty = True
+                    if msg.get_type() == "HEARTBEAT":
+                        heartbeat.on_heartbeat(parsed, msg.get_srcSystem(), time.monotonic())
 
             # Check and execute pending commands from Redis
             process_commands(redis_svc, command_svc, mission_svc)
+
             now_m = time.monotonic()
             if "home_lat" not in state and now_m - last_home_req >= HOME_REQUEST_INTERVAL:
                 last_home_req = now_m
                 mav.send("command_long", mav.target_system(), mav.target_component(),
-                        mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE, 0, 242, 0, 0, 0, 0, 0, 0)
+                         mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE, 0, 242, 0, 0, 0, 0, 0, 0)
+
             # Check stale telemetry types
             now = time.monotonic()
+            heartbeat.check(now)
             stale = [t for t in TELEMETRY_TYPES
                      if t in last_seen and now - last_seen[t] > STALE_AFTER.get(t, DEFAULT_STALE_AFTER)]
 
