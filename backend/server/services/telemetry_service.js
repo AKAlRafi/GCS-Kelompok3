@@ -2,11 +2,14 @@ const { createClient } = require('redis');
 const { randomUUID } = require('node:crypto');
 const config = require('../config');
 const flightLogs = require('./flight_log_service');
+const stateTracker = require('./stateTracker');
 
 const publisherClient = createClient({ url: config.redisUrl });
 const subscriberClient = publisherClient.duplicate();
 let latestTelemetry = {};
 let onTelemetry = () => {};
+let onMissionStarted = () => {};
+let onMissionProgress = () => {};
 let lastTelemetryReceivedAt = 0;
 let isTelemetrySubscribed = false;
 let isAckSubscribed = false;
@@ -16,7 +19,11 @@ const maxCommandsAwaitingAck = 32;
 const lastRedisErrorAt = new Map();
 const telemetryNumberFields = [
   'lat', 'lon', 'alt', 'rel_alt', 'heading', 'roll', 'pitch', 'yaw',
-  'airspeed', 'groundspeed', 'battery_percent', 'timestamp'
+  'airspeed', 'groundspeed', 'battery_percent', 'battery_voltage', 'timestamp',
+  'climb_rate', 'gps_fix_type', 'satellites_visible', 'satellite_count', 'gps_satellites',
+  'eph', 'hdop', 'home_lat', 'home_lon', 'home_latitude', 'home_longitude',
+  'latitude', 'longitude', 'absolute_altitude', 'relative_altitude', 'ground_speed', 'air_speed',
+  'heartbeat_timestamp'
 ];
 
 for (const [name, client] of [['Redis', publisherClient], ['Redis subscriber', subscriberClient]]) {
@@ -30,6 +37,22 @@ for (const [name, client] of [['Redis', publisherClient], ['Redis subscriber', s
 
 function setTelemetryListener(listener) {
   onTelemetry = listener;
+}
+
+function setMissionStarter(listener) {
+  onMissionStarted = typeof listener === 'function' ? listener : () => {};
+}
+
+function trackMission(id) {
+  onMissionStarted(id);
+}
+
+function reportMissionProgress(progress) {
+  onMissionProgress(progress);
+}
+
+function setMissionProgressListener(listener) {
+  onMissionProgress = typeof listener === 'function' ? listener : () => {};
 }
 
 function validateTelemetry(data) {
@@ -77,6 +100,7 @@ function processTelemetryMessage(message) {
   try {
     const data = validateTelemetry(JSON.parse(message));
     latestTelemetry = { ...latestTelemetry, ...data, received_at: new Date().toISOString() };
+    latestTelemetry = stateTracker.updateTelemetry(latestTelemetry);
     lastTelemetryReceivedAt = Date.now();
     flightLogs.saveTelemetry(latestTelemetry);
     onTelemetry(latestTelemetry);
@@ -170,7 +194,7 @@ async function sendCommand(type, payload = {}) {
 }
 
 function getLatestTelemetry() {
-  return latestTelemetry;
+  return stateTracker.getState();
 }
 
 function getHealth() {
@@ -213,11 +237,16 @@ function resetTelemetryState() {
 module.exports = {
   connectTelemetry,
   setTelemetryListener,
+  setMissionStarter,
+  trackMission,
+  reportMissionProgress,
+  setMissionProgressListener,
   processTelemetryMessage,
   processAcknowledgement,
   getLatestTelemetry,
   getHealth,
   getConnectionStatus,
+  stateTracker,
   sendCommand,
   resetTelemetryState,
   closeTelemetry
