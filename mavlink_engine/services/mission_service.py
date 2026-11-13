@@ -2,6 +2,7 @@
 
 import logging
 import time
+import math
 from pymavlink import mavutil
 from .. import config
 from ..parsers.mission_parser import parse_mission_item
@@ -28,6 +29,9 @@ MISSION_RESULT_NAMES = {
     15: "MAV_MISSION_OPERATION_CANCELLED",
 }
 
+# Allowed commands for mission
+ALLOWED_MISSION_COMMANDS = {16, 19, 20, 21, 22, 115, 178, 183, 203}
+
 
 class MissionService:
     def __init__(self, mavlink_service, timeout: float = 3.0, max_retries: int = 3):
@@ -35,41 +39,14 @@ class MissionService:
         self.timeout = getattr(config, "MISSION_TIMEOUT", timeout)
         self.max_retries = getattr(config, "MISSION_MAX_RETRIES", max_retries)
         self.max_waypoints = getattr(config, "MAX_WAYPOINTS", 100)
-        self.max_altitude = getattr(config, "MAX_ALTITUDE", 500.0)
+        self.max_altitude = getattr(config, "MAX_ALTITUDE", 120)
 
     def is_connected(self) -> bool:
-        """Check whether the MAVLink master connection is active."""
-        try:
-            return self.mavlink is not None and getattr(self.mavlink, "master", None) is not None
-        except Exception as e:
-            logger.error(f"Error checking MAVLink connection state: {e}")
-            return False
+        return self.mavlink is not None and self.mavlink.master() is not None
 
     def wait_message(self, msg_types: list[str], timeout: float | None = None):
-        """Wait for specific MAVLink message types until timeout expires."""
         wait_time = timeout if timeout is not None else self.timeout
-        deadline = time.monotonic() + wait_time
-
-        while time.monotonic() < deadline:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            try:
-                msg = self.mavlink.master().recv_match(
-                    type=msg_types,
-                    blocking=True,
-                    timeout=min(remaining, 0.2),
-                )
-            except OSError as e:
-                logger.error(f"Connection error while waiting for {msg_types}: {e}")
-                raise
-            except Exception as e:
-                logger.error(f"Unexpected error receiving MAVLink message: {e}")
-                raise
-            if msg is not None:
-                return msg
-
-        return None
+        return self.mavlink.wait_for(msg_types, wait_time)
 
     def validate_waypoints(self, waypoints: list[dict]) -> tuple[bool, str]:
         """Validate waypoint structure, data types, and safety bounds."""
@@ -90,8 +67,14 @@ class MissionService:
                 return False, f"Waypoint {i} has invalid numeric coordinates or altitude"
             if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
                 return False, f"Waypoint {i} coordinates out of valid range ({lat}, {lon})"
-            if alt < 0 or alt > self.max_altitude:
+            if not math.isfinite(alt) or alt < 0 or alt > self.max_altitude:
                 return False, f"Waypoint {i} altitude is out of safe bounds: {alt} m"
+            try:
+                cmd = int(wp.get("command", 16))
+            except (TypeError, ValueError):
+                return False, f"Waypoint {i} has invalid command"
+            if cmd not in ALLOWED_MISSION_COMMANDS:
+                return False, f"Waypoint {i} command {cmd} is not allowed"
         return True, ""
 
     def send_mission_item(self, seq: int, wp: dict):
@@ -142,8 +125,12 @@ class MissionService:
         if not valid:
             return {"ok": False, "error": err_msg}
         master = self.mavlink.master()
-        count = len(waypoints)
-        logger.info(f"Starting mission upload for {count} waypoints.")
+        home = {"lat": 0.0, "lon": 0.0, "alt": 0.0, "frame": mavutil.mavlink.MAV_FRAME_GLOBAL,
+                "command": mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, "current": 0}
+        items = [home] + list(waypoints)   # ArduPilot: seq 0 = home
+        count = len(items)
+        deadline = time.monotonic() + self.timeout * self.max_retries * 3 + count * self.timeout
+        logger.info(f"Starting mission upload for {count - 1} waypoints.")
         try:
             for attempt in range(1, self.max_retries + 1):
                 master.mav.mission_count_send(
@@ -152,6 +139,8 @@ class MissionService:
                     count,
                 )
                 while True:
+                    if time.monotonic() > deadline:
+                        return {"ok": False, "error": "Mission upload failed: overall timeout"}
                     msg = self.wait_message(["MISSION_REQUEST_INT", "MISSION_REQUEST", "MISSION_ACK"])
                     if msg is None:
                         logger.warning(f"Timeout during mission upload on attempt {attempt}/{self.max_retries}")
@@ -161,11 +150,11 @@ class MissionService:
                         seq = msg.seq
                         if seq < 0 or seq >= count:
                             return {"ok": False, "error": f"Requested sequence out of range: {seq}"}
-                        self.send_mission_item(seq, waypoints[seq])
+                        self.send_mission_item(seq, items[seq])
                     elif msg_type == "MISSION_ACK":
                         if msg.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
                             logger.info(f"Mission upload succeeded: {count} waypoints")
-                            return {"ok": True, "count": count}
+                            return {"ok": True, "count": count - 1}
                         reason = MISSION_RESULT_NAMES.get(msg.type, f"CODE_{msg.type}")
                         logger.error(f"Mission upload rejected by vehicle: {reason}")
                         return {"ok": False, "error": f"Mission rejected: {reason}"}
@@ -235,6 +224,9 @@ class MissionService:
                 mavutil.mavlink.MAV_MISSION_ACCEPTED,
             )
             logger.info(f"Mission download succeeded: {len(waypoints)} waypoints")
+            waypoints = waypoints[1:]
+            for i, wp in enumerate(waypoints):
+                wp["seq"] = i
             return {"ok": True, "count": len(waypoints), "waypoints": waypoints}
         except OSError as e:
             logger.error(f"Mission download connection error: {e}")
