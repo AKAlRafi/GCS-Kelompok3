@@ -153,7 +153,7 @@ class MissionService:
                         self.send_mission_item(seq, items[seq])
                     elif msg_type == "MISSION_ACK":
                         if msg.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
-                            logger.info(f"Mission upload succeeded: {count} waypoints")
+                            logger.info(f"Mission upload succeeded: {count - 1} waypoints")
                             return {"ok": True, "count": count - 1}
                         reason = MISSION_RESULT_NAMES.get(msg.type, f"CODE_{msg.type}")
                         logger.error(f"Mission upload rejected by vehicle: {reason}")
