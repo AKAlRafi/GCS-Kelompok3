@@ -251,3 +251,18 @@ def test_target_comes_from_vehicle_heartbeat_not_conn():
 def test_target_is_zero_when_not_connected():
     s = MavlinkService()
     assert (s.target_system(), s.target_component()) == (0, 0)
+
+def test_open_link_parses_serial_url(monkeypatch):
+    from mavlink_engine.services import mavlink_service as ms
+    calls = []
+    monkeypatch.setattr(ms.mavutil, "mavlink_connection", lambda *a, **k: calls.append((a, k)))
+
+    ms.open_link("serial:/dev/ttyUSB0:57600")
+    ms.open_link("serial:COM5")
+    ms.open_link("udpin:0.0.0.0:14551")
+
+    assert calls == [
+        (("/dev/ttyUSB0",), {"baud": 57600}),
+        (("COM5",), {"baud": 115200}),
+        (("udpin:0.0.0.0:14551",), {}),
+    ]
