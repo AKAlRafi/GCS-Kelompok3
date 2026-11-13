@@ -26,6 +26,8 @@ def mock_mavlink():
 @pytest.fixture
 def mission_service(mock_mavlink):
     service = MissionService(mock_mavlink, timeout=0.05, max_retries=2)
+    service.timeout = 0.05
+    service.max_retries = 2
     service.max_waypoints = 5
     service.max_altitude = 120.0
     return service
@@ -44,7 +46,7 @@ def sample_waypoints():
 def test_is_connected(mission_service, mock_mavlink):
     assert mission_service.is_connected() is True
 
-    mock_mavlink.master = None
+    mock_mavlink.master.return_value = None
     assert mission_service.is_connected() is False
 
 
@@ -97,7 +99,7 @@ def test_validate_waypoints_out_of_bounds_altitude(mission_service):
 # --- Upload Mission Tests ---
 
 def test_upload_mission_disconnected(mock_mavlink, sample_waypoints):
-    mock_mavlink.master = None
+    mock_mavlink.master.return_value = None
     service = MissionService(mock_mavlink, timeout=0.05, max_retries=2)
 
     result = service.upload_mission(sample_waypoints)
@@ -106,21 +108,26 @@ def test_upload_mission_disconnected(mock_mavlink, sample_waypoints):
 
 
 def test_upload_mission_success(mission_service, mock_mavlink, sample_waypoints):
-    mock_mavlink.master.recv_match.side_effect = [
+    mock_mavlink.wait_for.side_effect = [
         make_msg("MISSION_REQUEST_INT", seq=0),
         make_msg("MISSION_REQUEST_INT", seq=1),
+        make_msg("MISSION_REQUEST_INT", seq=2),
         make_msg("MISSION_ACK", type=mavutil.mavlink.MAV_MISSION_ACCEPTED),
     ]
 
     result = mission_service.upload_mission(sample_waypoints)
 
     assert result == {"ok": True, "count": 2}
-    mock_mavlink.master.mav.mission_count_send.assert_called_once_with(1, 1, 2)
-    assert mock_mavlink.master.mav.mission_item_int_send.call_count == 2
+    # 2 waypoints + home placeholder at seq 0
+    mock_mavlink.master.mav.mission_count_send.assert_called_once_with(1, 1, 3)
+    sent = mock_mavlink.master.mav.mission_item_int_send.call_args_list
+    assert len(sent) == 3
+    assert sent[0].args[2] == 0 and sent[0].args[3] == mavutil.mavlink.MAV_FRAME_GLOBAL
+    assert sent[1].args[2] == 1 and sent[1].args[11] == -77701234
 
 
 def test_upload_mission_rejected_by_vehicle(mission_service, mock_mavlink, sample_waypoints):
-    mock_mavlink.master.recv_match.side_effect = [
+    mock_mavlink.wait_for.side_effect = [
         make_msg("MISSION_REQUEST", seq=0),
         make_msg("MISSION_ACK", type=mavutil.mavlink.MAV_MISSION_NO_SPACE),
     ]
@@ -132,7 +139,7 @@ def test_upload_mission_rejected_by_vehicle(mission_service, mock_mavlink, sampl
 
 
 def test_upload_mission_sequence_out_of_range(mission_service, mock_mavlink, sample_waypoints):
-    mock_mavlink.master.recv_match.side_effect = [
+    mock_mavlink.wait_for.side_effect = [
         make_msg("MISSION_REQUEST_INT", seq=99),
     ]
 
@@ -143,7 +150,7 @@ def test_upload_mission_sequence_out_of_range(mission_service, mock_mavlink, sam
 
 
 def test_upload_mission_timeout(mission_service, mock_mavlink, sample_waypoints):
-    mock_mavlink.master.recv_match.return_value = None
+    mock_mavlink.wait_for.return_value = None
 
     result = mission_service.upload_mission(sample_waypoints)
 
@@ -164,7 +171,7 @@ def test_upload_mission_connection_error(mission_service, mock_mavlink, sample_w
 # --- Download Mission Tests ---
 
 def test_download_mission_disconnected(mock_mavlink):
-    mock_mavlink.master = None
+    mock_mavlink.master.return_value = None
     service = MissionService(mock_mavlink, timeout=0.05, max_retries=2)
 
     result = service.download_mission()
@@ -173,7 +180,7 @@ def test_download_mission_disconnected(mock_mavlink):
 
 
 def test_download_mission_empty(mission_service, mock_mavlink):
-    mock_mavlink.master.recv_match.side_effect = [
+    mock_mavlink.wait_for.side_effect = [
         make_msg("MISSION_COUNT", count=0),
     ]
 
@@ -186,11 +193,20 @@ def test_download_mission_empty(mission_service, mock_mavlink):
 
 
 def test_download_mission_success(mission_service, mock_mavlink):
-    mock_mavlink.master.recv_match.side_effect = [
-        make_msg("MISSION_COUNT", count=2),
+    mock_mavlink.wait_for.side_effect = [
+        make_msg("MISSION_COUNT", count=3),
         make_msg(
             "MISSION_ITEM_INT",
             seq=0,
+            frame=mavutil.mavlink.MAV_FRAME_GLOBAL,
+            command=mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
+            current=0, autocontinue=1,
+            param1=0.0, param2=0.0, param3=0.0, param4=0.0,
+            x=0, y=0, z=0.0,
+        ),
+        make_msg(
+            "MISSION_ITEM_INT",
+            seq=1,
             frame=mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
             command=mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
             current=1,
@@ -205,7 +221,7 @@ def test_download_mission_success(mission_service, mock_mavlink):
         ),
         make_msg(
             "MISSION_ITEM_INT",
-            seq=1,
+            seq=2,
             frame=mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
             command=mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
             current=0,
@@ -223,19 +239,20 @@ def test_download_mission_success(mission_service, mock_mavlink):
     result = mission_service.download_mission()
 
     assert result["ok"] is True
-    assert result["count"] == 2
+    assert result["count"] == 2     # home (seq 0) is stripped
     assert len(result["waypoints"]) == 2
+    assert [w["seq"] for w in result["waypoints"]] == [0, 1]
     assert result["waypoints"][0]["lat"] == pytest.approx(-7.7701234)
     assert result["waypoints"][0]["lon"] == pytest.approx(110.3771234)
     assert result["waypoints"][0]["alt"] == 20.0
-    assert result["waypoints"][1]["seq"] == 1
+    assert result["waypoints"][1]["alt"] == 35.0
     mock_mavlink.master.mav.mission_ack_send.assert_called_once_with(
         1, 1, mavutil.mavlink.MAV_MISSION_ACCEPTED
     )
 
 
 def test_download_mission_count_timeout(mission_service, mock_mavlink):
-    mock_mavlink.master.recv_match.return_value = None
+    mock_mavlink.wait_for.return_value = None
 
     result = mission_service.download_mission()
 
@@ -244,9 +261,9 @@ def test_download_mission_count_timeout(mission_service, mock_mavlink):
 
 
 def test_download_mission_item_timeout(mission_service, mock_mavlink):
-    mock_mavlink.master.recv_match.side_effect = (
+    mock_mavlink.wait_for.side_effect = (
         lambda *args, **kwargs: make_msg("MISSION_COUNT", count=2)
-        if mock_mavlink.master.recv_match.call_count == 1
+        if mock_mavlink.wait_for.call_count == 1
         else None
     )
 
@@ -268,7 +285,7 @@ def test_download_mission_connection_error(mission_service, mock_mavlink):
 # --- Clear Mission Tests ---
 
 def test_clear_mission_disconnected(mock_mavlink):
-    mock_mavlink.master = None
+    mock_mavlink.master.return_value = None
     service = MissionService(mock_mavlink, timeout=0.05, max_retries=2)
 
     result = service.clear_mission()
@@ -277,7 +294,7 @@ def test_clear_mission_disconnected(mock_mavlink):
 
 
 def test_clear_mission_success(mission_service, mock_mavlink):
-    mock_mavlink.master.recv_match.side_effect = [
+    mock_mavlink.wait_for.side_effect = [
         make_msg("MISSION_ACK", type=mavutil.mavlink.MAV_MISSION_ACCEPTED),
     ]
 
@@ -288,7 +305,7 @@ def test_clear_mission_success(mission_service, mock_mavlink):
 
 
 def test_clear_mission_rejected(mission_service, mock_mavlink):
-    mock_mavlink.master.recv_match.side_effect = [
+    mock_mavlink.wait_for.side_effect = [
         make_msg("MISSION_ACK", type=mavutil.mavlink.MAV_MISSION_DENIED),
     ]
 
@@ -299,7 +316,7 @@ def test_clear_mission_rejected(mission_service, mock_mavlink):
 
 
 def test_clear_mission_timeout(mission_service, mock_mavlink):
-    mock_mavlink.master.recv_match.return_value = None
+    mock_mavlink.wait_for.return_value = None
 
     result = mission_service.clear_mission()
 
@@ -315,3 +332,20 @@ def test_clear_mission_connection_error(mission_service, mock_mavlink):
 
     assert result["ok"] is False
     assert "connection error" in result["error"].lower()
+
+# --- Extra validation ---
+
+def test_validate_waypoints_rejects_nan_altitude(mission_service):
+    valid, err = mission_service.validate_waypoints(
+        [{"lat": -7.77, "lon": 110.37, "alt": float("nan")}]
+    )
+    assert valid is False
+    assert "safe bounds" in err.lower()
+
+
+def test_validate_waypoints_command_whitelist(mission_service):
+    ok, _ = mission_service.validate_waypoints([{"lat": -7.77, "lon": 110.37, "alt": 10, "command": 22}])
+    bad, err = mission_service.validate_waypoints([{"lat": -7.77, "lon": 110.37, "alt": 10, "command": 246}])
+    assert ok is True
+    assert bad is False
+    assert "not allowed" in err.lower()
