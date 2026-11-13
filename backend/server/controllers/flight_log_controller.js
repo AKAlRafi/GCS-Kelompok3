@@ -11,10 +11,14 @@ function status(request, response) {
 
 function start(request, response, next) {
   try {
-    response.status(201).json(flightLogs.startLog(request.body.name));
+    const name = request.body?.name;
+    if (name !== undefined && (typeof name !== 'string' || name.length > 120)) {
+      return response.status(400).json({ ok: false, error: 'name harus berupa teks maksimal 120 karakter.' });
+    }
+    response.status(201).json(flightLogs.startLog(name));
   } catch (error) {
     if (error.message.includes('sedang berjalan')) {
-      return response.status(409).json({ error: error.message });
+      return response.status(409).json({ ok: false, error: error.message });
     }
     next(error);
   }
@@ -25,25 +29,29 @@ async function stop(request, response, next) {
     response.json(await flightLogs.stopLog());
   } catch (error) {
     if (error.message.includes('Tidak ada')) {
-      return response.status(400).json({ error: error.message });
+      return response.status(400).json({ ok: false, error: error.message });
     }
     next(error);
   }
 }
 
 function download(request, response) {
-  const log = flightLogs.getLog(request.params.id);
+  const logId = Number(request.params.id);
+  if (!Number.isSafeInteger(logId) || logId < 1) return response.status(400).json({ ok: false, error: 'ID log tidak valid.' });
+  const log = flightLogs.getLog(logId);
   if (!log || !fs.existsSync(log.file_path)) {
-    return response.status(404).json({ error: 'File flight log tidak ditemukan.' });
+    return response.status(404).json({ ok: false, error: 'File flight log tidak ditemukan.' });
   }
   response.download(log.file_path, log.file_name);
 }
 
 function telemetry(request, response) {
-  if (!flightLogs.getLog(request.params.id)) {
-    return response.status(404).json({ error: 'Flight log tidak ditemukan.' });
+  const logId = Number(request.params.id);
+  if (!Number.isSafeInteger(logId) || logId < 1) return response.status(400).json({ ok: false, error: 'ID log tidak valid.' });
+  if (!flightLogs.getLog(logId)) {
+    return response.status(404).json({ ok: false, error: 'Flight log tidak ditemukan.' });
   }
-  response.json(flightLogs.getTelemetry(request.params.id, request.query.limit));
+  response.json(flightLogs.getTelemetry(logId, request.query.limit));
 }
 
 module.exports = { list, status, start, stop, download, telemetry };

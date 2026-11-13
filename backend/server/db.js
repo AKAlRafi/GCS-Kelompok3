@@ -9,6 +9,7 @@ fs.mkdirSync(path.dirname(config.databasePath), { recursive: true });
 const database = new Database(config.databasePath);
 database.pragma('journal_mode = WAL');
 database.pragma('foreign_keys = ON');
+database.pragma('busy_timeout = 5000');
 database.exec(`
   CREATE TABLE IF NOT EXISTS parameters (
     name TEXT PRIMARY KEY,
@@ -61,6 +62,29 @@ for (const parameter of [
   ['stall_speed', 15, 'm/s', 'Batas kecepatan minimum pesawat']
 ]) insertDefaultParameter.run(...parameter);
 
+const telemetryQueue = [];
+const maxTelemetryQueue = 10000;
+const telemetryBatchSize = 250;
+const telemetryColumns = [
+  'latitude', 'longitude', 'altitude', 'relative_altitude', 'ground_speed',
+  'air_speed', 'roll', 'pitch', 'yaw', 'heading', 'battery_percent'
+];
+const insertTelemetry = database.prepare(`
+  INSERT INTO telemetry_records (
+    log_id, recorded_at, latitude, longitude, altitude, relative_altitude,
+    ground_speed, air_speed, roll, pitch, yaw, heading, battery_percent,
+    flight_mode, armed
+  ) VALUES (
+    @log_id, @recorded_at, @latitude, @longitude, @altitude, @relative_altitude,
+    @ground_speed, @air_speed, @roll, @pitch, @yaw, @heading, @battery_percent,
+    @flight_mode, @armed
+  )
+`);
+const insertTelemetryBatch = database.transaction((records) => {
+  for (const record of records) insertTelemetry.run(record);
+});
+let droppedTelemetryCount = 0;
+
 function listParameters() {
   return database.prepare('SELECT * FROM parameters ORDER BY name').all();
 }
@@ -71,12 +95,16 @@ function saveParameters(parameters) {
   `);
   database.transaction((items) => {
     for (const item of items) {
-      const value = Number(item.value);
-      if (!Number.isFinite(value) || typeof item.name !== 'string') {
-        throw new Error('Setiap parameter harus memiliki nama dan nilai angka yang valid.');
+      const value = item && Number(item.value);
+      if (!item || typeof item !== 'object' || !Number.isFinite(value) || typeof item.name !== 'string') {
+        const error = new Error('Setiap parameter harus memiliki nama dan nilai angka yang valid.');
+        error.status = 400;
+        throw error;
       }
       if (update.run(value, item.name).changes === 0) {
-        throw new Error(`Parameter tidak dikenal: ${item.name}`);
+        const error = new Error(`Parameter tidak dikenal: ${item.name}`);
+        error.status = 400;
+        throw error;
       }
     }
   })(parameters);
@@ -107,35 +135,49 @@ function getFlightLog(id) {
   return database.prepare('SELECT * FROM flight_logs WHERE id = ?').get(id);
 }
 
-function saveTelemetry(record) {
-  const columns = [
-    'latitude', 'longitude', 'altitude', 'relative_altitude', 'ground_speed',
-    'air_speed', 'roll', 'pitch', 'yaw', 'heading', 'battery_percent'
-  ];
-  const values = Object.fromEntries(columns.map((key) => {
+function normalizeTelemetryRecord(record) {
+  const values = Object.fromEntries(telemetryColumns.map((key) => {
     const value = record[key];
     return [key, value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value)];
   }));
-  return database.prepare(`
-    INSERT INTO telemetry_records (
-      log_id, recorded_at, latitude, longitude, altitude, relative_altitude,
-      ground_speed, air_speed, roll, pitch, yaw, heading, battery_percent,
-      flight_mode, armed
-    ) VALUES (
-      @log_id, @recorded_at, @latitude, @longitude, @altitude, @relative_altitude,
-      @ground_speed, @air_speed, @roll, @pitch, @yaw, @heading, @battery_percent,
-      @flight_mode, @armed
-    )
-  `).run({
+  return {
     ...values,
     log_id: record.log_id ?? null,
     recorded_at: record.recorded_at || new Date().toISOString(),
     flight_mode: record.flight_mode ?? null,
     armed: record.armed == null ? null : Number(Boolean(record.armed))
-  }).lastInsertRowid;
+  };
+}
+
+function flushTelemetry() {
+  if (telemetryQueue.length === 0) return true;
+  const batch = telemetryQueue.splice(0, telemetryBatchSize);
+  try {
+    insertTelemetryBatch(batch.map(normalizeTelemetryRecord));
+    return true;
+  } catch (error) {
+    telemetryQueue.unshift(...batch);
+    console.error('Gagal menyimpan batch telemetry:', error.message);
+    return false;
+  }
+}
+
+function saveTelemetry(record) {
+  if (telemetryQueue.length >= maxTelemetryQueue) {
+    droppedTelemetryCount += 1;
+    return false;
+  }
+  telemetryQueue.push({ ...record });
+  if (telemetryQueue.length >= telemetryBatchSize) flushTelemetry();
+  return true;
+}
+
+function getTelemetryQueueStatus() {
+  return { queued: telemetryQueue.length, dropped: droppedTelemetryCount };
 }
 
 function listTelemetry(logId, requestedLimit) {
+  flushTelemetry();
   const parsedLimit = Number.parseInt(requestedLimit, 10);
   const limit = Number.isFinite(parsedLimit) ? Math.min(10000, Math.max(1, parsedLimit)) : 1000;
   return database.prepare(`
@@ -151,6 +193,17 @@ module.exports = {
   listFlightLogs,
   getFlightLog,
   saveTelemetry,
+  flushTelemetry,
+  getTelemetryQueueStatus,
   listTelemetry,
-  close: () => { if (database.open) database.close(); }
+  close: () => {
+    clearInterval(telemetryFlushTimer);
+    while (telemetryQueue.length > 0) {
+      if (!flushTelemetry()) throw new Error('Telemetry yang belum tersimpan masih tertahan di antrean.');
+    }
+    if (database.open) database.close();
+  }
 };
+
+const telemetryFlushTimer = setInterval(flushTelemetry, 250);
+telemetryFlushTimer.unref();

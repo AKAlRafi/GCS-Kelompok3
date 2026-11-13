@@ -6,10 +6,10 @@ function list(request, response) {
 
 function save(request, response, next) {
   try {
-    if (!Array.isArray(request.body.parameters)) {
-      return response.status(400).json({ error: 'Field parameters harus berupa array.' });
+    if (!Array.isArray(request.body?.parameters)) {
+      return response.status(400).json({ ok: false, error: 'Field parameters harus berupa array.' });
     }
-    response.json(database.saveParameters(request.body.parameters));
+    response.json({ ok: true, parameters: database.saveParameters(request.body.parameters) });
   } catch (error) {
     next(error);
   }

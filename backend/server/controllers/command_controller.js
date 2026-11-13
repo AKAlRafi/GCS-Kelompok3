@@ -1,46 +1,52 @@
 const telemetryService = require('../services/telemetry_service');
+const { validateCommand } = require('../services/command_validation_service');
 
 function getConnectionStatus(request, response) {
   response.json(telemetryService.getConnectionStatus());
 }
 
-async function send(request, response) {
-  const { type, payload = {} } = request.body || {};
-  if (typeof type !== 'string' || !/^[a-z][a-z0-9_]{1,50}$/.test(type)) {
-    return response.status(400).json({ error: 'Field type harus berupa nama perintah yang valid.' });
+function send(request, response, next) {
+  try {
+    const { type, payload = {} } = request.body || {};
+    const command = validateCommand(type, payload);
+    return sendAndWait(command.type, command.payload, response, next);
+  } catch (error) {
+    return next(error);
   }
-  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
-    return response.status(400).json({ error: 'Field payload harus berupa objek JSON.' });
-  }
-  return sendAndWait(type, payload, response);
 }
 
-function uploadMission(request, response) {
-  const waypoints = request.body?.waypoints;
-  if (!Array.isArray(waypoints) || waypoints.length === 0) {
-    return response.status(400).json({ error: 'Waypoints harus berupa array yang tidak kosong.' });
+function uploadMission(request, response, next) {
+  try {
+    const command = validateCommand('upload_mission', request.body || {});
+    return sendAndWait(command.type, command.payload, response, next);
+  } catch (error) {
+    return next(error);
   }
-  return sendAndWait('upload_mission', { waypoints }, response);
 }
 
-function downloadMission(request, response) {
-  return sendAndWait('download_mission', {}, response);
+function downloadMission(request, response, next) {
+  return sendAndWait('download_mission', {}, response, next);
 }
 
-async function sendAndWait(type, payload, response) {
+async function sendAndWait(type, payload, response, next) {
   try {
     const acknowledgement = await telemetryService.sendCommand(type, payload);
     if (acknowledgement.ok === false) {
-      return response.status(502).json({ error: acknowledgement.error || 'Perintah ditolak oleh MAVLink.' });
+      const error = new Error(acknowledgement.error || 'Perintah ditolak oleh MAVLink.');
+      error.status = 502;
+      error.code = 'COMMAND_REJECTED';
+      throw error;
     }
     return response.json(acknowledgement);
   } catch (error) {
-    const status = {
+    error.status ||= ({
       COMMAND_TIMEOUT: 504,
       REDIS_UNAVAILABLE: 503,
-      COMMANDS_DISABLED: 503
-    }[error.code] || 500;
-    return response.status(status).json({ error: error.message });
+      COMMANDS_DISABLED: 503,
+      COMMAND_QUEUE_FULL: 429,
+      COMMAND_UNAVAILABLE: 503
+    }[error.code] || 500);
+    return next(error);
   }
 }
 

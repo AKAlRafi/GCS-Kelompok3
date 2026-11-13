@@ -1,9 +1,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { finished } = require('node:stream/promises');
 const database = require('../db');
 const config = require('../config');
 
 let activeLog = null;
+let lastQueueWarningAt = 0;
 
 function listLogs() {
   return database.listFlightLogs();
@@ -12,20 +14,24 @@ function listLogs() {
 function startLog(name = 'flight') {
   if (activeLog) throw new Error('Flight log sedang berjalan.');
   fs.mkdirSync(config.logFolder, { recursive: true });
-  const safeName = String(name).trim().replace(/[^a-zA-Z0-9_-]/g, '-') || 'flight';
+  const safeName = String(name || 'flight').trim().replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 80) || 'flight';
   const fileName = `${Date.now()}-${safeName}.jsonl`;
   const filePath = path.join(config.logFolder, fileName);
   const id = database.createFlightLog({ name: safeName, fileName, filePath });
   const stream = fs.createWriteStream(filePath, { flags: 'a' });
-  stream.on('error', (error) => console.error('Gagal menulis flight log:', error));
-  activeLog = { id, stream };
+  activeLog = { id, stream, fileWarningShown: false };
+  stream.on('error', (error) => {
+    console.error('Gagal menulis flight log:', error.message);
+    if (activeLog?.id === id) activeLog = null;
+    try { database.finishFlightLog(id); }
+    catch (databaseError) { console.error('Gagal menutup catatan flight log:', databaseError.message); }
+  });
   return { ok: true, id };
 }
 
 function saveTelemetry(telemetry) {
-  if (!activeLog) return;
   const record = {
-    log_id: activeLog.id,
+    log_id: activeLog?.id ?? null,
     recorded_at: telemetry.received_at,
     latitude: telemetry.lat,
     longitude: telemetry.lon,
@@ -41,7 +47,21 @@ function saveTelemetry(telemetry) {
     flight_mode: telemetry.flight_mode,
     armed: telemetry.armed
   };
-  database.saveTelemetry(record);
+  if (!database.saveTelemetry(record)) {
+    const now = Date.now();
+    if (now - lastQueueWarningAt > 5000) {
+      console.error('Antrean database telemetry penuh; sebagian record tidak tersimpan.');
+      lastQueueWarningAt = now;
+    }
+  }
+  if (!activeLog) return;
+  if (activeLog.stream.writableLength > 2_000_000) {
+    if (!activeLog.fileWarningShown) {
+      console.error('Flight log melambat; baris JSONL sementara dilewati, database tetap menerima telemetry.');
+      activeLog.fileWarningShown = true;
+    }
+    return;
+  }
   activeLog.stream.write(`${JSON.stringify(telemetry)}\n`);
 }
 
@@ -49,10 +69,13 @@ async function stopLog() {
   if (!activeLog) throw new Error('Tidak ada flight log yang sedang berjalan.');
   const log = activeLog;
   activeLog = null;
-  await new Promise((resolve, reject) => {
-    log.stream.end((error) => error ? reject(error) : resolve());
-  });
-  database.finishFlightLog(log.id);
+  const streamFinished = finished(log.stream);
+  log.stream.end();
+  try {
+    await streamFinished;
+  } finally {
+    database.finishFlightLog(log.id);
+  }
   return { ok: true };
 }
 
