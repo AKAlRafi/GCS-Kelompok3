@@ -1,26 +1,28 @@
+// menampilkan informasi log pencatatan data 
 import {useState} from 'react';
+//usestate untuk informasi dinamis
 export default function FlightLogPanel() {
-    const [recording, setReccording] = useState(false);
-    const [currentFile, setCurrentFile] = useState(null);
-    const [logs, setLogs] = useState([]);
+    const [recording, setReccording] = useState(false); //jalan atau tidak
+    const [currentFile, setCurrentFile] = useState(null); //simpan nama sesi on going 
+    const [logs, setLogs] = useState([]); //yg sudah selesai
 
     //start stop pencatatan simulasi 
     const toggleRecording = () => {
         if(!recording) {
-            const filename =`simulation${Date.now()}.log`;
+            const filename =`simulation${Date.now()}.log`; //nama sesi keadaan terbaru 
 
             setCurrentFile(filename);
-            setReccording(true);
+            setReccording(true); //ubah status
         } else { 
-            const newLog = {
+            const newLog = { //objek baru
                 id: Date.now(),
                 filename: currentFile,
-                startedAt: new Date().toLocaleString('id-ID'),
+                startedAt: new Date().toLocaleString('id-ID'), 
             };
 
-            setLogs((prev) => [newLog, ...prev]);
+            setLogs((prev) => [newLog, ...prev]); //sesi terbaru paling atas
             
-            setCurrentFile(null);
+            setCurrentFile(null); //kembalikan status
             setReccording(false);
         }
     };
@@ -36,8 +38,9 @@ export default function FlightLogPanel() {
 
                 {recording && (
                     <span className="flex items-center gap-1.5 text-xs text-red-400">
-                        <span className="h-2.5 w-3.5 animate-pulse rounded-full bg-red-500">
-                            REC
+                        <span className="h-2.5 w-3.5 animate-pulse rounded-full bg-red-500"
+                        >
+                            REC {/*muncul ketika recording true*/}
                         </span>
                         
                     </span>
@@ -54,7 +57,7 @@ export default function FlightLogPanel() {
             }`}
         > 
         {recording ? 'Stop simulation' : 'Start simulation'}
-        </button>
+        </button> 
 
         {/*informasi sesi saat ini*/}
         {recording && currentFile && (

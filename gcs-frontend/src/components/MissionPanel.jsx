@@ -30,7 +30,7 @@ export default function MissionPanel({
                 Belum ada waypoint
             </p>
         ) : (
-            <table className="w-full text-xs"> //tabel nomor koordinat alt remove
+            <table className="w-full text-xs"> {/*tabel nomor koordinat alt remove*/}
 
             {/*Kepala table*/}
             <thead className="sticky top-0 bg-slate-800 text-slate-400">

@@ -1,122 +1,103 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+// menyimpan data wp
+// mengatur status uav, ambil data telemetry dan sicket dari usetele
+// integrating
+import {useState} from 'react';
+import {useTelemetry} from './hooks/useTelemetry';
+import { newId } from './utils/wwaypoints';
 
-function App() {
-  const [count, setCount] = useState(0)
+import ConnectionBar from './components/ConnectionBar';
+import MissionMap from './components/MissionMap';
+import MissionPanel from './components/MissionPanel';
+import TelemetryPanel from './components/TelemetryPanel';
+import FlightLogPanel from './components/FlightLogPanel';
+import AttitudeIndicator from './components/AttitudeIndicator';
 
+export default function App() {
+  // state utama simpan daftar wp dan status uav
+  const [waypoints, setWaypoints] = useState([]);
+  const [uavConnected, setUavConnected] = useState(false);
+
+  // 2. MENGAMBIL DATA TELEMETRY
+  const {
+    telemetry,
+    socketConnected,
+    lastUpdate,
+  } = useTelemetry();
+
+  // 3. FUNGSI PENGELOLAAN WAYPOINT
+
+  // Mengubah altitude waypoint
+  const updateAlt = (id, alt) => {
+    setWaypoints((prev) =>
+      prev.map((wp) =>
+        wp.id === id ? { ...wp, alt } : wp
+      )
+    );
+  };
+
+  // Menghapus waypoint
+  const removeWaypoint = (id) => {
+    setWaypoints((prev) =>
+      prev.filter((wp) => wp.id !== id)
+    );
+  };
+
+  // 4. MENAMPILKAN SELURUH KOMPONEN
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
 
-      <div className="ticks"></div>
+      {/* Bagian atas */}
+      <ConnectionBar
+        uavConnected={uavConnected}
+        setUavConnected={setUavConnected}
+        socketConnected={socketConnected}
+      />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      {/* Bagian utama */}
+      <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:flex-row">
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+        {/* Area peta */}
+        <section className="min-h-[420px] flex-1">
+          <MissionMap
+            waypoints={waypoints}
+            uav={{
+              lat: telemetry.lat,
+              lon: telemetry.lon,
+              yaw: telemetry.yaw,
+            }}
+          />
+        </section>
+
+        {/* Area panel kanan */}
+        <aside className="w-full shrink-0 space-y-3 lg:w-96">
+
+          {/* Indikator orientasi */}
+          <div className="flex justify-center rounded-lg border border-slate-700 bg-slate-900 p-3">
+            <AttitudeIndicator
+              roll={telemetry.roll}
+              pitch={telemetry.pitch}
+            />
+          </div>
+
+          {/* Data telemetry */}
+          <TelemetryPanel
+            telemetry={telemetry}
+            lastUpdate={lastUpdate}
+          />
+
+          {/* Daftar waypoint */}
+          <MissionPanel
+            waypoints={waypoints}
+            onUpdateAlt={updateAlt}
+            onRemove={removeWaypoint}
+          />
+
+          {/* Pencatatan simulasi */}
+          <FlightLogPanel />
+
+        </aside>
+      </main>
+    </div>
+  );
 }
 
-export default App
