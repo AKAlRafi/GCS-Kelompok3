@@ -49,6 +49,8 @@ def test_heartbeat_armed(monkeypatch):
     r = telemetry_parser.parse_message(
         _msg("HEARTBEAT", autopilot=3, base_mode=flag)
     )
+    ts = r.pop("heartbeat_timestamp")
+    assert isinstance(ts, int) and ts > 0
     assert r == {"armed": True, "flight_mode": "GUIDED"}
 
 
@@ -75,3 +77,14 @@ def test_battery_unknown_is_none():
 
 def test_unknown_type_returns_none():
     assert parse_message(_msg("STATUSTEXT")) is None
+
+def test_gps_and_home():
+    from types import SimpleNamespace
+    from mavlink_engine.parsers.telemetry_parser import parse_gps, parse_home
+    gps = SimpleNamespace(fix_type=3, satellites_visible=10, eph=120)
+    assert parse_gps(gps) == {"gps_fix_type": 3, "satellites_visible": 10, "hdop": 1.2}
+    unknown = SimpleNamespace(fix_type=0, satellites_visible=255, eph=65535)
+    assert parse_gps(unknown)["satellites_visible"] is None
+    assert parse_gps(unknown)["hdop"] is None
+    home = SimpleNamespace(latitude=-77701234, longitude=1103771234)
+    assert parse_home(home) == {"home_lat": -7.7701234, "home_lon": 110.3771234}
