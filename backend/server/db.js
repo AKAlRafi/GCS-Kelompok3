@@ -62,9 +62,9 @@ for (const parameter of [
   ['stall_speed', 15, 'm/s', 'Batas kecepatan minimum pesawat']
 ]) insertDefaultParameter.run(...parameter);
 
-const telemetryQueue = [];
-const maxTelemetryQueue = 10000;
-const telemetryBatchSize = 250;
+const pendingTelemetryRecords = [];
+const maxPendingTelemetryRecords = 10000;
+const telemetryRecordsPerBatch = 250;
 const telemetryColumns = [
   'latitude', 'longitude', 'altitude', 'relative_altitude', 'ground_speed',
   'air_speed', 'roll', 'pitch', 'yaw', 'heading', 'battery_percent'
@@ -136,10 +136,11 @@ function getFlightLog(id) {
 }
 
 function normalizeTelemetryRecord(record) {
-  const values = Object.fromEntries(telemetryColumns.map((key) => {
-    const value = record[key];
-    return [key, value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value)];
-  }));
+  const values = {};
+  for (const column of telemetryColumns) {
+    const value = record[column];
+    values[column] = value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+  }
   return {
     ...values,
     log_id: record.log_id ?? null,
@@ -150,30 +151,30 @@ function normalizeTelemetryRecord(record) {
 }
 
 function flushTelemetry() {
-  if (telemetryQueue.length === 0) return true;
-  const batch = telemetryQueue.splice(0, telemetryBatchSize);
+  if (pendingTelemetryRecords.length === 0) return true;
+  const batch = pendingTelemetryRecords.splice(0, telemetryRecordsPerBatch);
   try {
     insertTelemetryBatch(batch.map(normalizeTelemetryRecord));
     return true;
   } catch (error) {
-    telemetryQueue.unshift(...batch);
+    pendingTelemetryRecords.unshift(...batch);
     console.error('Gagal menyimpan batch telemetry:', error.message);
     return false;
   }
 }
 
 function saveTelemetry(record) {
-  if (telemetryQueue.length >= maxTelemetryQueue) {
+  if (pendingTelemetryRecords.length >= maxPendingTelemetryRecords) {
     droppedTelemetryCount += 1;
     return false;
   }
-  telemetryQueue.push({ ...record });
-  if (telemetryQueue.length >= telemetryBatchSize) flushTelemetry();
+  pendingTelemetryRecords.push({ ...record });
+  if (pendingTelemetryRecords.length >= telemetryRecordsPerBatch) flushTelemetry();
   return true;
 }
 
 function getTelemetryQueueStatus() {
-  return { queued: telemetryQueue.length, dropped: droppedTelemetryCount };
+  return { queued: pendingTelemetryRecords.length, dropped: droppedTelemetryCount };
 }
 
 function listTelemetry(logId, requestedLimit) {
@@ -198,7 +199,7 @@ module.exports = {
   listTelemetry,
   close: () => {
     clearInterval(telemetryFlushTimer);
-    while (telemetryQueue.length > 0) {
+    while (pendingTelemetryRecords.length > 0) {
       if (!flushTelemetry()) throw new Error('Telemetry yang belum tersimpan masih tertahan di antrean.');
     }
     if (database.open) database.close();

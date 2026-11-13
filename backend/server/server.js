@@ -58,6 +58,7 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
   });
   let stopping = false;
   let connecting = false;
+  // WebSocket meneruskan telemetry ke frontend Fai.
   io.on('connection', (socket) => socket.emit('telemetry', telemetryService.getLatestTelemetry()));
   telemetryService.setTelemetryListener((telemetry) => io.emit('telemetry', telemetry));
 

@@ -11,8 +11,8 @@ let lastTelemetryReceivedAt = 0;
 let isTelemetrySubscribed = false;
 let isAckSubscribed = false;
 let connectionPromise = null;
-const waitingForAcks = new Map();
-const maxPendingCommands = 32;
+const pendingCommandAcks = new Map();
+const maxCommandsAwaitingAck = 32;
 const lastRedisErrorAt = new Map();
 const telemetryNumberFields = [
   'lat', 'lon', 'alt', 'rel_alt', 'heading', 'roll', 'pitch', 'yaw',
@@ -37,40 +37,40 @@ function validateTelemetry(data) {
     throw new Error('Telemetry harus berupa objek JSON.');
   }
 
-  const cleanData = {};
+  const validatedTelemetry = {};
   for (const field of telemetryNumberFields) {
     if (data[field] === undefined) continue;
     if (data[field] !== null && (typeof data[field] !== 'number' || !Number.isFinite(data[field]))) {
       throw new Error(`Field telemetry ${field} harus berupa angka terbatas.`);
     }
-    cleanData[field] = data[field];
+    validatedTelemetry[field] = data[field];
   }
-  if (cleanData.lat != null && (cleanData.lat < -90 || cleanData.lat > 90)) {
+  if (validatedTelemetry.lat != null && (validatedTelemetry.lat < -90 || validatedTelemetry.lat > 90)) {
     throw new Error('Latitude telemetry di luar batas.');
   }
-  if (cleanData.lon != null && (cleanData.lon < -180 || cleanData.lon > 180)) {
+  if (validatedTelemetry.lon != null && (validatedTelemetry.lon < -180 || validatedTelemetry.lon > 180)) {
     throw new Error('Longitude telemetry di luar batas.');
   }
-  if (cleanData.heading != null && (cleanData.heading < 0 || cleanData.heading > 360)) {
+  if (validatedTelemetry.heading != null && (validatedTelemetry.heading < 0 || validatedTelemetry.heading > 360)) {
     throw new Error('Heading telemetry di luar batas.');
   }
-  if (cleanData.battery_percent != null && (cleanData.battery_percent < 0 || cleanData.battery_percent > 100)) {
+  if (validatedTelemetry.battery_percent != null && (validatedTelemetry.battery_percent < 0 || validatedTelemetry.battery_percent > 100)) {
     throw new Error('Persentase baterai telemetry di luar batas.');
   }
   if (data.flight_mode !== undefined) {
     if (typeof data.flight_mode !== 'string' || data.flight_mode.length > 64) {
       throw new Error('Flight mode telemetry tidak valid.');
     }
-    cleanData.flight_mode = data.flight_mode;
+    validatedTelemetry.flight_mode = data.flight_mode;
   }
   if (data.armed !== undefined) {
     if (data.armed !== null && typeof data.armed !== 'boolean') {
       throw new Error('Status armed telemetry harus berupa boolean.');
     }
-    cleanData.armed = data.armed;
+    validatedTelemetry.armed = data.armed;
   }
-  if (Object.keys(cleanData).length === 0) throw new Error('Telemetry tidak berisi field yang dikenal.');
-  return cleanData;
+  if (Object.keys(validatedTelemetry).length === 0) throw new Error('Telemetry tidak berisi field yang dikenal.');
+  return validatedTelemetry;
 }
 
 function processTelemetryMessage(message) {
@@ -92,10 +92,10 @@ function processAcknowledgement(message) {
     const acknowledgement = JSON.parse(message);
     if (!acknowledgement || typeof acknowledgement !== 'object' || Array.isArray(acknowledgement)) return;
     const commandId = acknowledgement.id || acknowledgement.command_id;
-    const pendingCommand = waitingForAcks.get(commandId);
+    const pendingCommand = pendingCommandAcks.get(commandId);
     if (!pendingCommand || typeof acknowledgement.ok !== 'boolean') return;
     clearTimeout(pendingCommand.timeout);
-    waitingForAcks.delete(commandId);
+    pendingCommandAcks.delete(commandId);
     pendingCommand.resolve(acknowledgement);
   } catch (error) {
     console.error('Balasan perintah tidak bisa diproses:', error.message);
@@ -135,7 +135,7 @@ async function sendCommand(type, payload = {}) {
     error.code = 'REDIS_UNAVAILABLE';
     throw error;
   }
-  if (waitingForAcks.size >= maxPendingCommands) {
+  if (pendingCommandAcks.size >= maxCommandsAwaitingAck) {
     const error = new Error('Terlalu banyak perintah yang masih menunggu balasan.');
     error.code = 'COMMAND_QUEUE_FULL';
     throw error;
@@ -143,26 +143,26 @@ async function sendCommand(type, payload = {}) {
 
   const id = randomUUID();
   const message = JSON.stringify({ id, type, payload });
-  // ID yang sama dipakai untuk mencocokkan perintah dengan balasan dari engine.
+  // ID ini menghubungkan perintah dari GCS dengan balasan mavlink_engine Fikrie.
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      waitingForAcks.delete(id);
+      pendingCommandAcks.delete(id);
       const error = new Error(`Tidak ada balasan untuk perintah ${type}.`);
       error.code = 'COMMAND_TIMEOUT';
       reject(error);
     }, config.commandTimeoutMs);
-    waitingForAcks.set(id, { resolve, reject, timeout });
+    pendingCommandAcks.set(id, { resolve, reject, timeout });
 
     publisherClient.publish(config.redisCommandChannel, message).then((subscriberCount) => {
       if (subscriberCount > 0) return;
       clearTimeout(timeout);
-      waitingForAcks.delete(id);
+      pendingCommandAcks.delete(id);
       const error = new Error('Tidak ada engine yang berlangganan channel perintah.');
       error.code = 'COMMAND_UNAVAILABLE';
       reject(error);
     }).catch((error) => {
       clearTimeout(timeout);
-      waitingForAcks.delete(id);
+      pendingCommandAcks.delete(id);
       error.code = 'REDIS_UNAVAILABLE';
       reject(error);
     });
@@ -196,10 +196,10 @@ function getConnectionStatus() {
 }
 
 async function closeTelemetry() {
-  for (const [id, pendingCommand] of waitingForAcks) {
+  for (const [id, pendingCommand] of pendingCommandAcks) {
     clearTimeout(pendingCommand.timeout);
     pendingCommand.reject(new Error('Koneksi server ditutup.'));
-    waitingForAcks.delete(id);
+    pendingCommandAcks.delete(id);
   }
   if (subscriberClient.isOpen) await subscriberClient.quit();
   if (publisherClient.isOpen) await publisherClient.quit();
