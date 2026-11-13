@@ -34,12 +34,12 @@ ALLOWED_MISSION_COMMANDS = {16, 19, 20, 21, 22, 115, 178, 183, 203}
 
 
 class MissionService:
-    def __init__(self, mavlink_service, timeout: float = 3.0, max_retries: int = 3):
+    def __init__(self, mavlink_service, timeout, max_retries):
         self.mavlink = mavlink_service
-        self.timeout = getattr(config, "MISSION_TIMEOUT", timeout)
-        self.max_retries = getattr(config, "MISSION_MAX_RETRIES", max_retries)
-        self.max_waypoints = getattr(config, "MAX_WAYPOINTS", 100)
-        self.max_altitude = getattr(config, "MAX_ALTITUDE", 120)
+        self.timeout = config.MISSION_TIMEOUT
+        self.max_retries = config.MISSION_MAX_RETRIES
+        self.max_waypoints = config.MAX_WAYPOINTS
+        self.max_altitude = config.MAX_ALTITUDE
 
     def is_connected(self) -> bool:
         return self.mavlink is not None and self.mavlink.master() is not None
