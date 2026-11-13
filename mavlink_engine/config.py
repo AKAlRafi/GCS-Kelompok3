@@ -17,7 +17,11 @@ PUBLISH_INTERVAL = float(os.getenv("PUBLISH_INTERVAL", "0.05")) # 20 hz frequenc
 REDIS_COMMAND_CHANNEL = os.getenv("REDIS_COMMAND_CHANNEL", "commands")
 REDIS_ACK_CHANNEL = os.getenv("REDIS_ACK_CHANNEL", "command_acks")
 ENABLE_COMMANDS = os.getenv("ENABLE_COMMANDS", "0") == "1"
+COMMAND_TIMEOUT = float(os.getenv("COMMAND_TIMEOUT", "3"))
+MISSION_TIMEOUT = float(os.getenv("MISSION_TIMEOUT", "3"))
+MISSION_MAX_RETRIES = int(os.getenv("MISSION_MAX_RETRIES", "3"))
+ALLOW_FORCE_ARM = os.getenv("ALLOW_FORCE_ARM", "0") == "1"
 
 # Validation limits
 MAX_WAYPOINTS = int(os.getenv("MAX_WAYPOINTS", 100))
-MAX_ALTITUDE = float(os.getenv("MAX_ALTITUDE", 500))
+MAX_ALTITUDE = float(os.getenv("MAX_ALTITUDE", 120))
