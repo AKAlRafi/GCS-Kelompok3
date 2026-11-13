@@ -23,17 +23,19 @@ export default function useTelemetry(){
     //memantau koneksi dan menerima data
     useEffect(() => {
         const onConnect = () => setSocketConnected(true);    
-        const onDisconnet = () => setSocketConnectted(false);
+        const onDisconnect = () => setSocketConnected(false);
 
         const onTelemetry = (payload) => { //gabungan data lama dan baru
-            setTelemetry((prey) => ({...preview, ...payload}));
+            setTelemetry((prev) => ({...prev, ...payload}));
             setLastUpdate(Date.now());
         };
     
     //daftarkan event socket
     socket.on('connect', onConnect);
-    socket.on('telemetry', ontelemetry);
+    socket.on('telemetry', onTelemetry);
     socket.on('disconnect', onDisconnect);
+
+    socket.connect();
 
 return () => {
     //cleanup data lama by react saat hook dilepas

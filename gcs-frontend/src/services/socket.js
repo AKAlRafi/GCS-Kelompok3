@@ -3,7 +3,7 @@
 
 //memungkinkan react sebagai klien socket
 import{io} from'socket.io-client';
-import{SOCKET_URL}from'../comfig';
+import{SOCKET_URL}from'../config';
 
 //koneksi hold by use telemetry
 export const socket = io(SOCKET_URL, {

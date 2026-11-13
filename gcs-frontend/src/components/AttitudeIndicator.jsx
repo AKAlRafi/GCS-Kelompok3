@@ -1,7 +1,7 @@
 // visualisasi orientasi wahana dalam horizon buatan
 
 //useref = acces canvas
-import {useEffect, useRef} from 'react';
+import {useRef, useEffect} from 'react';
 
 const DEG = Math.PI / 180; // radian untuk attitude
 
@@ -14,7 +14,7 @@ function drawAttitude(ctx, size, roll, pitch) {
     ctx.clearRect(0,0, size, size);
 
     // bagian yang bergerak
-    ctx.cave();
+    ctx.save();
     ctx.translate(c, c);
 
     ctx.beginPath();
@@ -35,7 +35,7 @@ function drawAttitude(ctx, size, roll, pitch) {
 
     //langit-biru
     ctx.fillStyle = '#2563eb';
-    ctx.fillreact(-2*r, -4*r, 4*r, 4*r);
+    ctx.fillRect(-2*r, -4*r, 4*r, 4*r);
 
     //horizon line batas langit tanah
     ctx.strokeStyle = '#ffffff';
@@ -44,7 +44,7 @@ function drawAttitude(ctx, size, roll, pitch) {
 
     ctx.beginPath();
     ctx.moveTo(-2*r, 0);
-    ctx.lineTo(-2*r, 0);
+    ctx.lineTo(2*r, 0);
     ctx.stroke();
 
     //skala pitch atau sudut kemiringan 
@@ -57,7 +57,7 @@ function drawAttitude(ctx, size, roll, pitch) {
         ctx.lineTo(half, y);
         ctx.stroke();
 
-        ctx.font = '110x sans-serief';
+        ctx.font = '11px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(String(Math.abs(deg)), half + 14, y);
@@ -81,9 +81,9 @@ function drawAttitude(ctx, size, roll, pitch) {
         ctx.lineTo(0, -r + len);
         ctx.stroke();
 
-        ctx.restroke();
+        ctx.restore();
      });
-    ctx.restroke();
+    ctx.restore();
 
     //instrumen frame
     ctx.beginPath();
@@ -107,12 +107,12 @@ function drawAttitude(ctx, size, roll, pitch) {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    ctx.beginPath
+    ctx.beginPath();
     ctx.moveTo(c -r *0.6, c);
     ctx.lineTo(c-r*0.2, c);
     ctx.lineTo(c-r*0.2, c+10);
 
-    ctx.beginPath
+    ctx.beginPath();
     ctx.moveTo(c+r *0.6, c);
     ctx.lineTo(c+r*0.2, c);
     ctx.lineTo(c+r*0.2, c+10);
@@ -134,14 +134,14 @@ export default function AttitudeIndicator({ //terima nilai dari 3 komponen
     const safePitch = Number.isFinite(pitch) ? pitch : 0;
 
     useEffect(() => {
-        const camvas = canvasRef.current;
-        const dpr = window.devicePixelratio || 1;
+        const canvas = canvasRef.current;
+        const dpr = window.devicePixelRatio || 1;
 
         canvas.width = size * dpr;
         canvas.height= size * dpr;
 
         const ctx = canvas.getContext('2d');
-        ctx.setTransformator(dpr, 0, 0, dpr, 0, 0);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         drawAttitude(ctx, size, safeRoll, safePitch); 
         //gambar diperbarui saat nilai komponen berubah
@@ -151,7 +151,7 @@ export default function AttitudeIndicator({ //terima nilai dari 3 komponen
         <div className="flex flex-col items-center gap-1">
             <canvas
               ref={canvasRef}
-              style={{ wirdth: size, height: size}}
+              style={{ width: size, height: size}}
             />
 
             <div className="font-mono text-xs text-slate-300">

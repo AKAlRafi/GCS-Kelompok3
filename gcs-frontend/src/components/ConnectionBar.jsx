@@ -16,19 +16,19 @@ export default function ConnectionBar ({
 
             <div className="flex items-center gap-4 text-xs text-slate-300">
                 <Status label="Server" ok={socketConnected} />
-                <Status label="UAV (test)" ok={uavConneccted} />
+                <Status label="UAV (test)" ok={uavConnected} />
             </div>
 
             <div className="ml-auto flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => setUavConnected(!uavConnected)} // tombol konek-DC, nilai berubah
-                  classname={`rounded px-4 py-1 text-sm font-semibold ${
+                  onClick={() => setUavConnected(!uavConnected)} 
+                  className={`rounded px-4 py-1 text-sm font-semibold ${
                     uavConnected
                     ? "bg-red-600 hover:bg-red-500"
                     : "bg-green-600 hover:bg-green-500"
                   }`}
                 >
-                  {uavConnected ? "Disconnect Simulation" : "Connect Simulation"} //tulisan tombol
+                  {uavConnected ? "Disconnect Simulation" : "Connect Simulation"} 
                 </button>
             </div>
         </header>
@@ -40,7 +40,7 @@ function Status({ label, ok}) {
     return (
         <span className="flex items-center gap-1.5">
             <span
-                className={`h-2.5 w-2.5 rounded-full %{
+                className={`h-2.5 w-2.5 rounded-full ${
                     ok ? "bg-green-500" : "bg-red-500"
                 }`}
             />

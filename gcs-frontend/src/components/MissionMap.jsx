@@ -1,20 +1,19 @@
 // bagian peta pada gcs secara visual 
 import L from 'leaflet'; //buat visual peta
 import{
-    MapContaiiner,
+    MapContainer,
     TileLayer,
     Marker,
     Popup,
-    MapContainer,
 } from 'react-leaflet'; //peta-react
 import 'leaflet/dist/leaflet.css'; //css bawaan 
 
 //titik awal peta 
-const default_center =[-7.6, 105];
+const DEFAULT_CENTER =[-7.8013966, 110.3647641];
 
 //buat ikon waypoint dengan nomor
 const waypointIcon = (number) =>
-    L.divIconivIcon ({
+    L.divIcon({
         className: '',
         html: `
         <div class="flex h-7 w-7 items-center justify-center rounded-full border-white bg-blue-600 
@@ -22,7 +21,7 @@ const waypointIcon = (number) =>
         ${number}
         </div>
         `,
-        iconSize: [28, 28,],
+        iconSize: [28, 28],
         iconAnchor: [14, 14],
     });
 
@@ -32,8 +31,8 @@ const uavIcon = (yaw) =>
         className: '',
         html: `
         <div style="transform: rotate(${Number(yaw) || 0}deg)"
-        class="flex h-6 w-6 utems-center justify-center
-        text-2xxl leading-non text-amber-400">
+        class="flex h-6 w-6 items-center justify-center
+        text-2xl leading-none text-amber-400">
         ▲
         </div>
         `,
@@ -49,9 +48,9 @@ const uavIcon = (yaw) =>
          uav.lat != null && uav.lon != null;
 
         return (
-            <div className="h-[420px w-full overflow-hidden rounder-lg border border-slate-700">
+                <div className="h-[420px] w-full overflow-hidden rounded-lg border border-slate-700">
              <MapContainer
-               center={default_center} //posisi awal
+               center={DEFAULT_CENTER} //posisi awal
                zoom={13}
                className="h-full w-full" //ukuran peta mengikuti wadahnya 
             > 

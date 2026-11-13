@@ -2,8 +2,8 @@
 // mengatur status uav, ambil data telemetry dan sicket dari usetele
 // integrating
 import {useState} from 'react';
-import {useTelemetry} from './hooks/useTelemetry';
-import { newId } from './utils/wwaypoints';
+import useTelemetry from './hooks/useTelemetry';
+import { newId } from './utils/waypoints';
 
 import ConnectionBar from './components/ConnectionBar';
 import MissionMap from './components/MissionMap';

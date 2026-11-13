@@ -11,7 +11,7 @@ export default function MissionPanel({
     const hasWp = waypoints.length > 0; //apakah ada wp
 
     return (
-        <section classname="space-y-3 rounded-lg border border-slate-700 bg-slate-900 p-3">
+        <section className="space-y-3 rounded-lg border border-slate-700 bg-slate-900 p-3">
             {/* Judul Panel */}
          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
             Mission Planning
@@ -30,7 +30,7 @@ export default function MissionPanel({
                 Belum ada waypoint
             </p>
         ) : (
-            <table className="w-full text-xs"> {/*tabel nomor koordinat alt remove*/}
+            <table className="w-full text-xs"> {/*tabel nomor koordinat alt remove
 
             {/*Kepala table*/}
             <thead className="sticky top-0 bg-slate-800 text-slate-400">
@@ -57,15 +57,15 @@ export default function MissionPanel({
 
                     {/*koordinat*/}
                     <td className="p-2 font-mono">
-                        {wp.lat.toFixed(5)}, {wp.lon(5)}
+                        {wp.lat.toFixed(5)}, {wp.lon.toFixed(5)}
                     </td>
                     
                     {/*ubah alt*/}
                     <td className="p-2 text-center">
                         <input 
                         type="number"
-                        main="0"
-                        value="wp.alt"
+                        min="0"
+                        value={wp.alt}
                         onChange={(e) =>
                             onUpdateAlt(
                                 wp.id,
@@ -73,12 +73,12 @@ export default function MissionPanel({
                             )
                         }
                         className="w-16 rounder bg-slate-700 px-1 py-1 text-right text-white"
-                        > </input>
+                        /> 
                     </td>
                     {/*tombolhapus*/}
                     <td className="p-2 text-center">
                         <button
-                        onClink={() => onRemove(wp.id)}
+                        onClick={() => onRemove(wp.id)}
                         className="text-red-400 hover:text-red-300"
                         title="Hapus waypoint"
                         >
@@ -94,7 +94,7 @@ export default function MissionPanel({
 
         {/*jumlah waypoint*/}
         <p classname="text-xs text-slate-400">
-            Total waypoint : {waypoints.lenght}
+            Total waypoint : {waypoints.length}
         </p>
 
 

@@ -2,7 +2,7 @@
 import {useState} from 'react';
 //usestate untuk informasi dinamis
 export default function FlightLogPanel() {
-    const [recording, setReccording] = useState(false); //jalan atau tidak
+    const [recording, setRecording] = useState(false); //jalan atau tidak
     const [currentFile, setCurrentFile] = useState(null); //simpan nama sesi on going 
     const [logs, setLogs] = useState([]); //yg sudah selesai
 
@@ -12,7 +12,7 @@ export default function FlightLogPanel() {
             const filename =`simulation${Date.now()}.log`; //nama sesi keadaan terbaru 
 
             setCurrentFile(filename);
-            setReccording(true); //ubah status
+            setRecording(true); //ubah status
         } else { 
             const newLog = { //objek baru
                 id: Date.now(),
@@ -103,7 +103,7 @@ export default function FlightLogPanel() {
             </ul>
         </div>
         <p className="text-xs text-amber-400">
-            Mode simulasi : tidak mereka data wahana atau membuat file log.
+            Mode simulasi : tidak merekam data wahana atau membuat file log.
         </p>
         </section>
     );

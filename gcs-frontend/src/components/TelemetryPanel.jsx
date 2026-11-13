@@ -55,7 +55,7 @@ export default function TelemetryPanel({
                 </h2>
 
                 <span
-                  className={`text-xs font semibold ${
+                  className={`text-xs font-semibold ${
                     isStale ? `text-amber-400` : `text-green-400`
                   }`}
                 >
@@ -63,7 +63,7 @@ export default function TelemetryPanel({
                 </span>
             </div>
 
-            <div className="grid gird-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
                 {items.map((item) =>  ( //menampilkan data masing masing objek 
                     <div
                     key={item.label}
@@ -75,7 +75,7 @@ export default function TelemetryPanel({
 
                     <p className="mt-1 font-mono text-lg font-bold text-white">
                         {item.value}
-                        <span className="m1-1 text-xs text-slate-400">
+                        <span className="ml-1 text-xs text-slate-400">
                           {item.unit}
                         </span>
                     </p>
