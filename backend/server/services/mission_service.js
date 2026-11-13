@@ -172,7 +172,6 @@ function checkPreflight() {
   const state = tracker.getState();
   const reasons = [];
   if (!state.heartbeat_fresh) reasons.push(`Heartbeat drone tidak ada atau lebih lama dari ${config.heartbeatStaleMs / 1000} detik.`);
-  if (state.armed !== false) reasons.push('Drone harus dalam status DISARMED sebelum memulai misi.');
   if (!Number.isFinite(Number(state.gps_fix_type)) || Number(state.gps_fix_type) < 3) reasons.push('GPS belum mencapai 3D Fix.');
   if (!Number.isFinite(Number(state.satellites_visible)) || Number(state.satellites_visible) < 6) reasons.push('Jumlah satelit GPS kurang dari 6.');
   const hdop = Number(state.hdop ?? state.eph);
@@ -195,17 +194,50 @@ async function uploadMissionToDrone(id) {
   return { ...ack, mission_id: Number(id), waypoint_count: waypoints.length };
 }
 
+function requireAcceptedCommand(result, label) {
+  if (result?.ok === false) throw apiError(result.error || `Perintah ${label} ditolak.`, 502, 'COMMAND_REJECTED');
+}
+
+async function waitForTakeoff(targetAltitude) {
+  const timeoutAt = Date.now() + 45000;
+  while (Date.now() < timeoutAt) {
+    const state = tracker.getState();
+    if (state.armed === false) throw apiError('Drone kembali DISARMED saat takeoff.', 409, 'TAKEOFF_ABORTED');
+    if (Number.isFinite(Number(state.rel_alt)) && Number(state.rel_alt) >= Math.min(2, targetAltitude * 0.5)) return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw apiError('Drone belum mencapai ketinggian aman setelah perintah takeoff.', 504, 'TAKEOFF_TIMEOUT');
+}
+
 async function startMission(id, reportProgress = () => {}) {
-  checkPreflight();
+  const state = checkPreflight();
   reportProgress({ mission_id: Number(id), stage: 'PRE_ARM', active_waypoint: 0 });
   const mission = readMission(id);
   const upload = await uploadMissionToDrone(id);
-  if (upload.ok === false) throw apiError(upload.error || 'Upload misi ditolak.', 502, 'COMMAND_REJECTED');
-  await telemetry.sendCommand('set_mode', { mode: 'AUTO' });
-  reportProgress({ mission_id: Number(id), stage: 'ARMING', active_waypoint: 0 });
-  await telemetry.sendCommand('arm', {});
-  if (mission.waypoints[0]?.command === 22) reportProgress({ mission_id: Number(id), stage: 'TAKING_OFF', active_waypoint: 0 });
+  requireAcceptedCommand(upload, 'upload misi');
+
+  if (state.armed !== true) {
+    reportProgress({ mission_id: Number(id), stage: 'ARMING', active_waypoint: 0 });
+    requireAcceptedCommand(await telemetry.sendCommand('arm', {}), 'arm');
+  }
+
+  const firstWaypoint = mission.waypoints[0];
+  const isOnGround = !Number.isFinite(Number(state.rel_alt)) || Number(state.rel_alt) < 1;
+  if (isOnGround && firstWaypoint?.command !== 22) {
+    if (!config.allowedFlightModes.includes('GUIDED')) {
+      throw apiError('Mode GUIDED harus diizinkan untuk takeoff sebelum misi.', 503, 'GUIDED_MODE_NOT_CONFIGURED');
+    }
+    const targetAltitude = Math.min(config.maxAltitude, Math.max(10, Number(firstWaypoint?.alt) || 10));
+    requireAcceptedCommand(await telemetry.sendCommand('set_mode', { mode: 'GUIDED' }), 'mode GUIDED');
+    reportProgress({ mission_id: Number(id), stage: 'TAKING_OFF', active_waypoint: 0 });
+    requireAcceptedCommand(await telemetry.sendCommand('takeoff', { altitude_m: targetAltitude }), 'takeoff');
+    await waitForTakeoff(targetAltitude);
+  }
+
+  requireAcceptedCommand(await telemetry.sendCommand('set_mode', { mode: 'AUTO' }), 'mode AUTO');
+  reportProgress({ mission_id: Number(id), stage: 'STARTING_MISSION', active_waypoint: 0 });
   const result = await telemetry.sendCommand('start_mission', { mission_id: Number(id) });
+  requireAcceptedCommand(result, 'mulai misi');
   reportProgress({ mission_id: Number(id), stage: 'NAVIGATING_WAYPOINT', active_waypoint: 0,
     waypoint_count: mission.waypoints.length });
   return result;

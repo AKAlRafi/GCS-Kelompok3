@@ -23,6 +23,9 @@ const realSendCommand = telemetry.sendCommand;
 before(async () => {
   telemetry.sendCommand = async (type, payload) => {
     commands.push({ type, payload });
+    if (type === 'takeoff') {
+      tracker.updateTelemetry({ armed: true, rel_alt: 10, heartbeat_timestamp: Date.now() });
+    }
     return { ok: true, id: `test-${commands.length}` };
   };
   server = serverModule.startServer({ host: '127.0.0.1', port: 0, connectRedis: false });
@@ -133,8 +136,25 @@ test('preflight passes with telemetry and start publishes expected command seque
   commands.length = 0;
   const started = await request(`/missions/${id}/start`, 'POST', {});
   assert.equal(started.response.status, 200);
-  assert.deepEqual(commands.map((command) => command.type), ['upload_mission', 'set_mode', 'arm', 'start_mission']);
+  assert.deepEqual(commands.map((command) => command.type), ['upload_mission', 'arm', 'set_mode', 'start_mission']);
   assert.equal(commands[0].payload.waypoints[0].command, 16);
+});
+
+test('start on the ground arms and takes off in GUIDED before switching to AUTO', async () => {
+  provideHealthyTelemetry();
+  tracker.updateTelemetry({ rel_alt: 0 });
+  const created = await request('/missions', 'POST', { waypoints: [{ lat: -7.769, lon: 110.371, alt: 12 }] });
+  const id = (await created.data).mission.id;
+  commands.length = 0;
+
+  const started = await request(`/missions/${id}/start`, 'POST', {});
+
+  assert.equal(started.response.status, 200);
+  assert.deepEqual(commands.map((command) => command.type), [
+    'upload_mission', 'arm', 'set_mode', 'takeoff', 'set_mode', 'start_mission'
+  ]);
+  assert.deepEqual(commands[3].payload, { altitude_m: 12 });
+  assert.deepEqual(commands[4].payload, { mode: 'AUTO' });
 });
 
 test('ROTATE_YAW accepts a valid turn and sends CONDITION_YAW payload', async () => {
