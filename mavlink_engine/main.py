@@ -63,7 +63,7 @@ def dispatch_command(payload, command_svc, mission_svc) -> dict:
     else:
         name = raw_name.strip().lower()
         if name in MISSION_COMMANDS:
-            if not getattr(config, "ENABLE_COMMANDS", False):
+            if not config.ENABLE_COMMANDS:
                 res = {"ok": False, "error": "Commands are disabled (ENABLE_COMMANDS=0)"}
             elif name == "upload_mission":
                 res = mission_svc.upload_mission(inner.get("waypoints"))

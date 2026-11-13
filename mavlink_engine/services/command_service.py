@@ -23,9 +23,9 @@ COMMAND_RESULT_NAMES = {
 
 
 class CommandService:
-    def __init__(self, mavlink_service, timeout):
+    def __init__(self, mavlink_service, timeout: float = config.COMMAND_TIMEOUT):
         self.mavlink = mavlink_service
-        self.timeout = config.COMMAND_TIMEOUT
+        self.timeout = timeout
         self.enabled = config.ENABLE_COMMANDS
 
     def is_connected(self) -> bool:

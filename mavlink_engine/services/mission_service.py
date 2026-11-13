@@ -34,10 +34,10 @@ ALLOWED_MISSION_COMMANDS = {16, 19, 20, 21, 22, 115, 178, 183, 203}
 
 
 class MissionService:
-    def __init__(self, mavlink_service, timeout, max_retries):
+    def __init__(self, mavlink_service, timeout: float = config.COMMAND_TIMEOUT, max_retries: int = config.MISSION_MAX_RETRIES):
         self.mavlink = mavlink_service
-        self.timeout = config.MISSION_TIMEOUT
-        self.max_retries = config.MISSION_MAX_RETRIES
+        self.timeout = timeout
+        self.max_retries = max_retries
         self.max_waypoints = config.MAX_WAYPOINTS
         self.max_altitude = config.MAX_ALTITUDE
 
