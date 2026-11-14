@@ -40,7 +40,7 @@ export default function App() {
 
   useEffect(() => {
     if (!failsafeWarning) return;
-    setToast({ type: 'safety', message: failsafeWarning.message || failsafeWarning.reason || 'Peringatan failsafe.' });
+    setToast({ type: 'safety', message: 'Flight safety warning. Check vehicle status.' });
   }, [failsafeWarning]);
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function App() {
     missionApi.list().then((response) => {
       if (active) setMissions(Array.isArray(response.missions) ? response.missions : []);
     }).catch((requestError) => {
-      if (active) setToast({ type: 'error', message: requestError.response?.data?.error || 'Daftar misi gagal dimuat.' });
+      if (active) setToast({ type: 'error', message: requestError.message || 'Could not load missions.' });
     });
     return () => { active = false; };
   }, []);
@@ -74,7 +74,7 @@ export default function App() {
       if (message) setToast({ type: 'success', message });
       return result;
     } catch (requestError) {
-      setToast({ type: 'error', message: requestError.response?.data?.error || requestError.message || 'Permintaan gagal.' });
+      setToast({ type: 'error', message: requestError.response?.data?.error || requestError.message || 'Request failed.' });
       return null;
     } finally {
       setBusy(false);
@@ -82,8 +82,8 @@ export default function App() {
   };
 
   const executeCommand = (type, payload = {}) => {
-    const labels = { arm: 'Perintah ARM dikirim.', disarm: 'Perintah DISARM dikirim.', takeoff: 'Perintah Takeoff dikirim.', land: 'Perintah mendarat dikirim.', rtl: 'Perintah RTL dikirim.' };
-    return runAction(() => commandApi.send(type, payload), labels[type] || 'Perintah dikirim.');
+    const labels = { arm: 'Arm command sent.', disarm: 'Disarm command sent.', takeoff: 'Takeoff command sent.', land: 'Land command sent.', rtl: 'RTL command sent.' };
+    return runAction(() => commandApi.send(type, payload), labels[type] || 'Command sent.');
   };
 
   const selectMission = async (id) => {
@@ -97,7 +97,7 @@ export default function App() {
 
   const saveMission = async () => {
     if (waypoints.length === 0) {
-      setToast({ type: 'error', message: 'Tambahkan titik rute sebelum menyimpan misi.' });
+      setToast({ type: 'error', message: 'Add at least one waypoint before saving.' });
       return;
     }
     const route = waypoints.map((waypoint, index) => ({
@@ -107,8 +107,8 @@ export default function App() {
       command: Number(waypoint.command ?? (index === 0 ? 22 : 16)),
     }));
     const result = await runAction(
-      () => missionApi.create({ name: missionName.trim() || 'Rute GCS', waypoints: route }),
-      'Misi tersimpan.',
+      () => missionApi.create({ name: missionName.trim() || 'GCS Mission', waypoints: route }),
+      'Mission saved.',
     );
     if (result?.mission) {
       setSelectedMissionId(String(result.mission.id));
@@ -119,24 +119,24 @@ export default function App() {
 
   const uploadMission = () => runAction(
     () => missionApi.upload(selectedMissionId),
-    'Misi berhasil di-upload ke drone.',
+    'Mission uploaded to the vehicle.',
   );
 
   const startMission = async () => {
-    const result = await runAction(() => missionApi.start(selectedMissionId), 'Misi dimulai.');
+    const result = await runAction(() => missionApi.start(selectedMissionId), 'Mission started.');
     if (result) setMissionRunState('running');
   };
 
   const missionControl = async (type) => {
     const result = await runAction(
       () => missionApi.control(type),
-      type === 'pause_mission' ? 'Misi dijeda.' : 'Misi dilanjutkan.',
+      type === 'pause_mission' ? 'Mission paused.' : 'Mission resumed.',
     );
     if (result) setMissionRunState(type === 'pause_mission' ? 'paused' : 'running');
   };
 
   const deleteMission = async () => {
-    const result = await runAction(() => missionApi.remove(selectedMissionId), 'Misi tersimpan dihapus.');
+    const result = await runAction(() => missionApi.remove(selectedMissionId), 'Saved mission deleted.');
     if (!result) return;
     setSelectedMissionId('');
     setWaypoints([]);
@@ -146,7 +146,7 @@ export default function App() {
 
   const clearVehicleMission = () => runAction(
     () => missionApi.clearFromVehicle(),
-    'Misi di drone berhasil dikosongkan.',
+    'Mission cleared from the vehicle.',
   );
 
   const addWaypoint = ({ lat, lng }) => {
@@ -166,16 +166,18 @@ export default function App() {
 
   const removeWaypoint = (id) => setWaypoints((previous) => previous.filter((waypoint) => waypoint.id !== id));
 
-  const loadUgmPreset = () => {
-    setSelectedMissionId('');
-    setMissionName('Preset patroli UGM');
-    setWaypoints([
-      { id: newId(), lat: -7.7699, lon: 110.3768, alt: 10 },
-      { id: newId(), lat: -7.7701, lon: 110.3781, alt: 10 },
-      { id: newId(), lat: -7.7712, lon: 110.3777, alt: 10 },
-      { id: newId(), lat: -7.7710, lon: 110.3765, alt: 10 },
-    ]);
-    setToast({ type: 'success', message: 'Preset Rute UGM siap. Cek titiknya sebelum di-upload.' });
+  const downloadMission = async () => {
+    if (!selectedMissionId) return;
+    const mission = missions.find((item) => String(item.id) === String(selectedMissionId));
+    const baseName = (mission?.name || 'mission').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'mission';
+    const result = await runAction(() => missionApi.download(selectedMissionId), `Downloaded ${baseName}.waypoints.`);
+    if (!result) return;
+    const url = URL.createObjectURL(result.data);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${baseName}.waypoints`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const resetMap = () => {
@@ -205,7 +207,7 @@ export default function App() {
       {toast && (
         <div className={`fixed right-4 top-20 z-[1200] flex max-w-sm items-start gap-3 rounded-lg border px-4 py-3 text-sm shadow-xl ${toast.type === 'safety' ? 'border-orange-700 bg-orange-950 text-orange-100' : toast.type === 'error' ? 'border-red-800 bg-red-950 text-red-100' : 'border-slate-600 bg-slate-900 text-slate-100'}`} role={toast.type === 'error' || toast.type === 'safety' ? 'alert' : 'status'} aria-live="polite">
           <span className="flex-1">{toast.message}</span>
-          <button type="button" onClick={() => setToast(null)} className="-mr-1 rounded px-1 text-slate-300 hover:bg-slate-800" aria-label="Tutup notifikasi">×</button>
+          <button type="button" onClick={() => setToast(null)} className="-mr-1 rounded px-1 text-slate-300 hover:bg-slate-800" aria-label="Dismiss notification">×</button>
         </div>
       )}
 
@@ -223,8 +225,8 @@ export default function App() {
             onMapClick={addWaypoint}
           />
           <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
-            <span>{addingWaypoint ? 'Klik peta untuk menaruh titik rute.' : 'Pilih “Tambah Titik”, lalu klik peta untuk menaruh titik rute.'}</span>
-            <span><b className="text-sky-300">H</b> Home · <b className="text-sky-300">▲</b> drone · jejak penerbangan · rute misi</span>
+            <span>{addingWaypoint ? 'Click the map to add a waypoint.' : 'Select “Add Point”, then click the map to add a waypoint.'}</span>
+            <span><b className="text-sky-300">H</b> Home · <b className="text-sky-300">▲</b> vehicle · flight path · mission route</span>
           </p>
         </section>
 
@@ -254,7 +256,7 @@ export default function App() {
             onClearLocal={resetMap}
             onClearVehicle={clearVehicleMission}
             onToggleAddWaypoint={() => setAddingWaypoint((value) => !value)}
-            onLoadUgmPreset={loadUgmPreset}
+            onDownload={downloadMission}
             onToggleFollow={() => setFollowVehicle((value) => !value)}
             onUpdateAlt={updateAltitude}
             onRemove={removeWaypoint}

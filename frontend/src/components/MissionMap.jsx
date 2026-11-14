@@ -126,9 +126,9 @@ export default function MissionMap({
             icon={waypointIcons[index]}
           >
             <Popup>
-              <strong>Titik Rute {index + 1}</strong>
-              <div>Lintang: {Number(waypoint.lat).toFixed(6)}</div>
-              <div>Bujur: {Number(waypoint.lon).toFixed(6)}</div>
+              <strong>Waypoint {index + 1}</strong>
+              <div>Latitude: {Number(waypoint.lat).toFixed(6)}</div>
+              <div>Longitude: {Number(waypoint.lon).toFixed(6)}</div>
             </Popup>
           </Marker>
         ))}

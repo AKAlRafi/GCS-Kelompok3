@@ -28,6 +28,7 @@ export const commandApi = {
 export const missionApi = {
   list: () => http.get('/missions').then(data),
   get: (id) => http.get(`/missions/${id}`).then(data),
+  download: (id) => http.get(`/missions/${id}/download`, { responseType: 'blob', timeout: 60_000 }),
   create: ({ name, waypoints }) => http.post('/missions', {
     name,
     waypoints: cleanWaypoints(waypoints),

@@ -8,19 +8,19 @@ const format = (value, digits = 1) => {
 };
 
 const labels = {
-  lat: ['Lintang', 7, '°'],
-  lon: ['Bujur', 7, '°'],
-  rel_alt: ['Altitude Relatif', 1, 'm'],
+  lat: ['Latitude', 7, '°'],
+  lon: ['Longitude', 7, '°'],
+  rel_alt: ['Relative Altitude', 1, 'm'],
   alt: ['Altitude AMSL', 1, 'm'],
-  groundspeed: ['Kecepatan Darat', 1, 'm/s'],
-  airspeed: ['Kecepatan Udara', 1, 'm/s'],
-  heading: ['Arah (Heading)', 1, '°'],
+  groundspeed: ['Ground Speed', 1, 'm/s'],
+  airspeed: ['Air Speed', 1, 'm/s'],
+  heading: ['Heading', 1, '°'],
   roll: ['Roll', 1, '°'],
   pitch: ['Pitch', 1, '°'],
   yaw: ['Yaw', 1, '°'],
-  battery_percent: ['Baterai', 0, '%'],
-  gps_fix_type: ['Fix GPS', 0, ''],
-  satellites_visible: ['Satelit', 0, ''],
+  battery_percent: ['Battery', 0, '%'],
+  gps_fix_type: ['GPS Fix', 0, ''],
+  satellites_visible: ['Satellites', 0, ''],
   hdop: ['HDOP', 1, ''],
 };
 
@@ -34,9 +34,9 @@ export default function TelemetryPanel({ telemetry, lastUpdate }) {
   return (
     <section className="rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-lg">
       <div className="mb-4 flex items-center justify-between border-b border-slate-700 pb-3">
-        <h2 className="text-sm font-bold tracking-wide text-white">Telemetri</h2>
+        <h2 className="text-sm font-bold tracking-wide text-white">Telemetry</h2>
         <span className={`rounded-md border px-2.5 py-1 text-[10px] font-bold tracking-wider ${isStale ? 'border-slate-600 bg-slate-800 text-slate-400' : 'border-sky-700 bg-sky-950 text-sky-300'}`}>
-          {isStale ? 'Tidak Live' : 'Live'}
+          {isStale ? 'NO DATA' : 'LIVE'}
         </span>
       </div>
       <div className="mb-3 grid grid-cols-2 gap-2 text-xs">

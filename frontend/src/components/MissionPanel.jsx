@@ -19,10 +19,10 @@ export default function MissionPanel({
   onClearLocal,
   onClearVehicle,
   onToggleAddWaypoint,
-  onLoadUgmPreset,
   onToggleFollow,
   onUpdateAlt,
   onRemove,
+  onDownload,
 }) {
   const selectedMission = missions.find((mission) => String(mission.id) === String(selectedMissionId));
   const running = missionRunState === 'running';
@@ -31,29 +31,26 @@ export default function MissionPanel({
   return (
     <section className="space-y-4 rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-lg">
       <div className="border-b border-slate-700 pb-3">
-        <h2 className="text-sm font-bold tracking-wide text-slate-100">Perencanaan Misi</h2>
-        <p className="mt-1 text-xs leading-relaxed text-slate-400">Atur titik rute, simpan, lalu upload misinya ke drone.</p>
+        <h2 className="text-sm font-bold tracking-wide text-slate-100">Mission Planner</h2>
+        <p className="mt-1 text-xs leading-relaxed text-slate-400">Add route points, save the mission, then upload it to the drone.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <button onClick={onToggleAddWaypoint} className={`${buttonClass} ${addingWaypoint ? 'border-sky-500 text-sky-300' : ''}`}>
-          {addingWaypoint ? 'Selesai Tambah Titik' : 'Tambah Titik'}
+          {addingWaypoint ? 'Finish Adding Points' : 'Add Point'}
         </button>
         <button onClick={onToggleFollow} className={`${buttonClass} ${followVehicle ? 'border-sky-500 text-sky-300' : ''}`}>
-          {followVehicle ? 'Ikuti Drone: Aktif' : 'Ikuti Drone'}
-        </button>
-        <button onClick={onLoadUgmPreset} className={`${buttonClass} col-span-2`}>
-          Preset Rute UGM
+          {followVehicle ? 'Follow Drone: On' : 'Follow Drone'}
         </button>
       </div>
 
       <div className="max-h-52 overflow-y-auto rounded bg-slate-800">
         {waypoints.length === 0 ? (
-          <p className="p-3 text-center text-xs text-slate-500">Belum ada titik rute.</p>
+          <p className="p-3 text-center text-xs text-slate-500">No route points yet.</p>
         ) : (
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-slate-800 text-[10px] uppercase tracking-wider text-slate-400">
-              <tr><th className="p-2 text-left">#</th><th className="p-2 text-left">Lintang, bujur</th><th className="p-2 text-center">Alt. (m)</th><th /></tr>
+              <tr><th className="p-2 text-left">#</th><th className="p-2 text-left">Latitude, longitude</th><th className="p-2 text-center">Alt. (m)</th><th /></tr>
             </thead>
             <tbody>
               {waypoints.map((waypoint, index) => (
@@ -66,7 +63,7 @@ export default function MissionPanel({
                       className="w-16 rounded bg-slate-700 px-1 py-1 text-right text-white" />
                   </td>
                   <td className="p-2 text-center">
-                    <button onClick={() => onRemove(waypoint.id)} className="rounded px-2 text-slate-400 hover:bg-slate-700 hover:text-white" title="Hapus titik rute" aria-label={`Hapus titik rute ${index + 1}`}>×</button>
+                    <button onClick={() => onRemove(waypoint.id)} className="rounded px-2 text-slate-400 hover:bg-slate-700 hover:text-white" title="Remove route point" aria-label={`Remove route point ${index + 1}`}>×</button>
                   </td>
                 </tr>
               ))}
@@ -74,47 +71,48 @@ export default function MissionPanel({
           </table>
         )}
       </div>
-      <p className="text-xs text-slate-400">{waypoints.length} titik rute</p>
+      <p className="text-xs text-slate-400">{waypoints.length} route points</p>
 
       <div className="space-y-2 border-t border-slate-700 pt-3">
-        <label className="block text-xs text-slate-400" htmlFor="mission-name">Nama Misi</label>
+        <label className="block text-xs text-slate-400" htmlFor="mission-name">Mission name</label>
         <input id="mission-name" value={missionName} onChange={(event) => onMissionNameChange(event.target.value)}
-          placeholder="Contoh: Rute simulasi" maxLength={80}
+          placeholder="e.g. Test route" maxLength={80}
           className="w-full rounded bg-slate-800 px-2 py-2 text-sm text-white placeholder:text-slate-500" />
-        <label className="block text-xs text-slate-400" htmlFor="saved-mission">Misi Tersimpan</label>
+        <label className="block text-xs text-slate-400" htmlFor="saved-mission">Saved missions</label>
         <select id="saved-mission" value={selectedMissionId} onChange={(event) => onSelectMission(event.target.value)}
           className="w-full rounded bg-slate-800 px-2 py-2 text-sm text-white">
-          <option value="">Pilih misi</option>
-          {missions.map((mission) => <option key={mission.id} value={mission.id}>{mission.name} ({mission.waypoint_count} titik)</option>)}
+          <option value="">Select a mission</option>
+          {missions.map((mission) => <option key={mission.id} value={mission.id}>{mission.name} ({mission.waypoint_count} points)</option>)}
         </select>
-        {selectedMission && <p className="text-xs text-slate-400">Panjang rute: {Number(selectedMission.total_distance_m || 0).toFixed(1)} m</p>}
+        {selectedMission && <p className="text-xs text-slate-400">Route length: {Number(selectedMission.total_distance_m || 0).toFixed(1)} m</p>}
         <div className="grid grid-cols-2 gap-2">
-          <button disabled={busy || !selectedMissionId} onClick={onUpload} className={primaryButtonClass}>Upload Misi</button>
+          <button disabled={busy || !selectedMissionId} onClick={onUpload} className={primaryButtonClass}>Upload Mission</button>
           {running ? (
-            <button disabled={busy || !selectedMissionId} onClick={() => onMissionControl('pause_mission')} className={primaryButtonClass}>Jeda</button>
+            <button disabled={busy || !selectedMissionId} onClick={() => onMissionControl('pause_mission')} className={primaryButtonClass}>Pause</button>
           ) : paused ? (
-            <button disabled={busy || !selectedMissionId} onClick={() => onMissionControl('resume_mission')} className={primaryButtonClass}>Lanjutkan</button>
+            <button disabled={busy || !selectedMissionId} onClick={() => onMissionControl('resume_mission')} className={primaryButtonClass}>Resume</button>
           ) : (
-            <button disabled={busy || !selectedMissionId} onClick={onStart} className={primaryButtonClass}>Mulai Misi</button>
+            <button disabled={busy || !selectedMissionId} onClick={onStart} className={primaryButtonClass}>Start Mission</button>
           )}
         </div>
         <div className="flex flex-wrap gap-2 border-t border-slate-700 pt-3">
-          <button disabled={busy || waypoints.length === 0} onClick={onSaveMission} className={compactButtonClass}>Simpan Misi</button>
-          <button disabled={busy} onClick={onClearLocal} className={compactButtonClass}>Reset Peta</button>
-          {selectedMissionId && <button disabled={busy} onClick={onDeleteMission} className={compactButtonClass}>Hapus Misi</button>}
+          <button disabled={busy || waypoints.length === 0} onClick={onSaveMission} className={compactButtonClass}>Save Mission</button>
+          <button disabled={busy} onClick={onClearLocal} className={compactButtonClass}>Reset Map</button>
+          {selectedMissionId && <button disabled={busy} onClick={onDeleteMission} className={compactButtonClass}>Delete Mission</button>}
+          {selectedMissionId && <button disabled={busy} onClick={onDownload} className={compactButtonClass}>Download .waypoints</button>}
         </div>
         <details className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2">
-            <summary className="cursor-pointer text-xs font-medium text-slate-300">Lainnya</summary>
+          <summary className="cursor-pointer text-xs font-medium text-slate-300">More</summary>
           <button disabled={busy} onClick={onClearVehicle} className={`${compactButtonClass} mt-2 w-full`}>
-            Hapus Misi di Drone
+            Clear Mission on Drone
           </button>
         </details>
       </div>
 
       {(missionProgress || navigationGuidance) && (
         <div className="space-y-1 rounded bg-slate-800 p-2 text-xs text-slate-300">
-          {missionProgress && <p>Status misi: <b className="text-white">{missionStageLabel(missionProgress.stage)}</b>{missionProgress.active_waypoint != null ? ` · titik ${Number(missionProgress.active_waypoint) + 1}` : ''}</p>}
-          {navigationGuidance && <p>Ke titik berikutnya: {navigationGuidance.distance_m} m · arah {navigationGuidance.bearing_deg}°</p>}
+          {missionProgress && <p>Mission: <b className="text-white">{missionStageLabel(missionProgress.stage)}</b>{missionProgress.active_waypoint != null ? ` · point ${Number(missionProgress.active_waypoint) + 1}` : ''}</p>}
+          {navigationGuidance && <p>Next point: {navigationGuidance.distance_m} m · heading {navigationGuidance.bearing_deg}°</p>}
         </div>
       )}
     </section>
@@ -127,15 +125,15 @@ const compactButtonClass = 'rounded-md border border-slate-600 bg-slate-800 px-2
 
 function missionStageLabel(stage) {
   const labels = {
-    PRE_ARM: 'Cek Pra-terbang',
+    PRE_ARM: 'Pre-flight check',
     ARMING: 'Arm',
     TAKING_OFF: 'Takeoff',
-    STARTING_MISSION: 'Memulai Misi',
-    NAVIGATING_WAYPOINT: 'Menuju Titik',
-    RETURNING_HOME: 'Kembali ke Home',
+    STARTING_MISSION: 'Starting mission',
+    NAVIGATING_WAYPOINT: 'Navigating to point',
+    RETURNING_HOME: 'Returning home',
     LANDING: 'Landing',
-    EXECUTING_ACTION: 'Menjalankan Aksi',
-    COMPLETED: 'Selesai',
+    EXECUTING_ACTION: 'Executing action',
+    COMPLETED: 'Completed',
   };
   return labels[stage] || stage || '—';
 }
