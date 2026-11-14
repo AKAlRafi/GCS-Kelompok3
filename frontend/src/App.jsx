@@ -8,6 +8,7 @@ import MissionPanel from './components/MissionPanel';
 import TelemetryPanel from './components/TelemetryPanel';
 import FlightLogPanel from './components/FlightLogPanel';
 import AttitudeIndicator from './components/AttitudeIndicator';
+import Compass from './components/Compass';
 
 export default function App() {
   const [waypoints, setWaypoints] = useState([]);
@@ -193,6 +194,10 @@ export default function App() {
     && (Number(telemetry.home_lat) !== 0 || Number(telemetry.home_lon) !== 0)
     ? { lat: telemetry.home_lat, lon: telemetry.home_lon }
     : UGM_HOME;
+  const vehicleHeading = Number(telemetry.heading ?? telemetry.yaw);
+  const mapBearing = followVehicle && Number.isFinite(vehicleHeading)
+    ? ((360 - vehicleHeading % 360) % 360)
+    : 0;
 
   return (
     <div className="gcs-shell flex h-[100dvh] flex-col bg-slate-950 text-slate-100">
@@ -220,6 +225,7 @@ export default function App() {
             trail={trail}
             addingWaypoint={addingWaypoint}
             followVehicle={followVehicle}
+            mapBearing={mapBearing}
             resetViewKey={mapResetKey}
             activeWaypointIndex={missionProgress?.active_waypoint}
             onMapClick={addWaypoint}
@@ -229,10 +235,10 @@ export default function App() {
             <span><b className="text-sky-300">H</b> Home · <b className="text-sky-300">▲</b> vehicle · flight path · mission route</span>
           </p>
         </section>
-
-        <aside className="gcs-side-column w-full shrink-0 space-y-3 sm:space-y-4 xl:w-[26rem] xl:overflow-y-auto xl:pr-1">
-          <div className="flex justify-center rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-lg sm:p-4">
-            <AttitudeIndicator roll={telemetry.roll} pitch={telemetry.pitch} />
+        <aside className="gcs-side-column w-full shrink-0 space-y-3 sm:space-y-4 xl:w-[20rem] xl:overflow-y-auto xl:pr-1">
+          <div className="grid grid-cols-2 items-start gap-2 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-lg sm:gap-3 sm:p-3">
+            <AttitudeIndicator roll={-telemetry.roll} pitch={telemetry.pitch} size={124} />
+            <Compass bearing={mapBearing} size={124} showButton={false} />
           </div>
           <TelemetryPanel telemetry={telemetry} lastUpdate={lastUpdate} />
           <MissionPanel

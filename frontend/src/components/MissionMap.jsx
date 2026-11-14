@@ -41,12 +41,93 @@ const homeIcon = L.divIcon({
   iconAnchor: [12, 12],
 });
 
-function MapClickHandler({ enabled, onMapClick }) {
+function MapClickHandler({ enabled, onMapClick, followVehicle, bearing }) {
+  const map = useMap();
   useMapEvents({
     click(event) {
-      if (enabled) onMapClick?.(event.latlng);
+      if (!enabled) return;
+      if (!followVehicle || !Number.isFinite(bearing)) {
+        onMapClick?.(event.latlng);
+        return;
+      }
+
+      // In heading-up mode the visual map is rotated, so unrotate the screen
+      // point before asking Leaflet for its geographic coordinate.
+      const center = map.getSize().divideBy(2);
+      const point = event.containerPoint;
+      const radians = -bearing * Math.PI / 180;
+      const dx = point.x - center.x;
+      const dy = point.y - center.y;
+      const correctedPoint = L.point(
+        center.x + dx * Math.cos(radians) - dy * Math.sin(radians),
+        center.y + dx * Math.sin(radians) + dy * Math.cos(radians),
+      );
+      onMapClick?.(map.containerPointToLatLng(correctedPoint));
     },
   });
+  return null;
+}
+
+function FollowMapRotation({ enabled, bearing }) {
+  const map = useMap();
+  const rotationRef = useRef({ lastBearing: null, unwrappedBearing: 0 });
+
+  useEffect(() => {
+    const pane = map.getPanes().mapPane;
+    const updateOrigin = () => {
+      const size = map.getSize();
+      const center = size.divideBy(2);
+      // Leaflet leaves mapPane content-sized; give it viewport bounds so CSS
+      // rotation has a stable pivot at the visible map's center.
+      pane.style.width = `${size.x}px`;
+      pane.style.height = `${size.y}px`;
+      pane.style.transformOrigin = `${center.x}px ${center.y}px`;
+    };
+    updateOrigin();
+    map.on('resize', updateOrigin);
+    return () => map.off('resize', updateOrigin);
+  }, [map]);
+
+  useEffect(() => {
+    if (enabled) {
+      map.dragging.disable();
+      map.scrollWheelZoom.disable();
+    } else {
+      map.dragging.enable();
+      map.scrollWheelZoom.enable();
+    }
+    return () => {
+      map.dragging.enable();
+      map.scrollWheelZoom.enable();
+    };
+  }, [enabled, map]);
+
+  useEffect(() => {
+    const pane = map.getPanes().mapPane;
+    if (!enabled || !Number.isFinite(bearing)) {
+      rotationRef.current.lastBearing = null;
+      rotationRef.current.unwrappedBearing = 0;
+      pane.style.rotate = '0deg';
+      return;
+    }
+
+    const normalizedBearing = ((bearing % 360) + 360) % 360;
+    if (rotationRef.current.lastBearing === null) {
+      rotationRef.current.unwrappedBearing = normalizedBearing;
+    } else {
+      const delta = ((normalizedBearing - rotationRef.current.lastBearing + 540) % 360) - 180;
+      rotationRef.current.unwrappedBearing += delta;
+    }
+    rotationRef.current.lastBearing = normalizedBearing;
+    const center = map.getSize().divideBy(2);
+    const size = map.getSize();
+    pane.style.width = `${size.x}px`;
+    pane.style.height = `${size.y}px`;
+    pane.style.transformOrigin = `${center.x}px ${center.y}px`;
+    pane.style.transition = 'rotate 180ms linear';
+    pane.style.rotate = `${rotationRef.current.unwrappedBearing}deg`;
+  }, [enabled, bearing, map]);
+
   return null;
 }
 
@@ -84,6 +165,7 @@ export default function MissionMap({
   onMapClick,
   addingWaypoint = false,
   followVehicle = false,
+  mapBearing = 0,
   resetViewKey = 0,
   activeWaypointIndex = null,
 }) {
@@ -96,6 +178,10 @@ export default function MissionMap({
       : null
   ), [uavLat, uavLon]);
   const vehicleHeading = uav?.heading ?? uav?.yaw;
+  const numericHeading = Number(vehicleHeading);
+  const normalizedHeading = Number.isFinite(numericHeading)
+    ? ((numericHeading % 360) + 360) % 360
+    : null;
   const vehicleMarkerIcon = useMemo(() => vehicleIcon(vehicleHeading), [vehicleHeading]);
   const waypointCount = waypoints.length;
   const waypointIcons = useMemo(() => Array.from({ length: waypointCount }, (_, index) => waypointIcon(index + 1, index === activeWaypointIndex)), [waypointCount, activeWaypointIndex]);
@@ -107,11 +193,20 @@ export default function MissionMap({
   const homeLon = home?.lon ?? UGM_HOME.lon;
 
   return (
-    <div className={`h-[min(72vh,850px)] min-h-[460px] w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-xl ${addingWaypoint ? 'cursor-crosshair' : ''}`}>
+    <div className={`relative h-[min(72vh,850px)] min-h-[460px] w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-xl ${addingWaypoint ? 'cursor-crosshair' : ''}`}>
+      <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-md border border-slate-600 bg-slate-950/90 px-2 py-1 font-mono text-[10px] font-bold tracking-wider text-slate-200">
+        {followVehicle ? 'HEADING UP' : 'NORTH UP'}
+      </div>
       <MapContainer center={DEFAULT_CENTER} zoom={16} className="h-full w-full" preferCanvas>
         <InitialVehicleView position={position} follow={followVehicle} />
         <ResetMapView resetViewKey={resetViewKey} />
-        <MapClickHandler enabled={addingWaypoint} onMapClick={onMapClick} />
+        <FollowMapRotation enabled={followVehicle} bearing={mapBearing} />
+        <MapClickHandler
+          enabled={addingWaypoint}
+          onMapClick={onMapClick}
+          followVehicle={followVehicle}
+          bearing={mapBearing}
+        />
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

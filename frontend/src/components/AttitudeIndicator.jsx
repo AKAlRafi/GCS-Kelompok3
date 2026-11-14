@@ -73,7 +73,7 @@ function drawAttitude(ctx, size, roll, pitch) {
         const len = angle % 30 === 0 ? 14 : 8;
 
         ctx.save();
-        ctx.rotate(angle*DEG);
+        ctx.rotate(-(angle)*DEG);
 
         ctx.beginPath();
         ctx.moveTo(0, -r);
