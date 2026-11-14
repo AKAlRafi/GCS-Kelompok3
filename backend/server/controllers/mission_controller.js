@@ -34,16 +34,16 @@ function importFile(request, response, next) {
         const marker = `--${boundary[1] || boundary[2]}`;
         const parts = request.body.toString('utf8').split(marker);
         const filePart = parts.find((part) => /filename="[^"]+"/i.test(part));
-        if (!filePart) throw new Error('Field file .waypoint tidak ditemukan.');
+        if (!filePart) throw new Error('Field file .waypoint atau .waypoints tidak ditemukan.');
         const splitAt = filePart.indexOf('\r\n\r\n');
         if (splitAt < 0) throw new Error('Isi file multipart tidak valid.');
         text = filePart.slice(splitAt + 4).replace(/\r\n--?\s*$/, '').replace(/\r\n$/, '');
-        const filename = filePart.match(/filename="([^"]+)"/i)?.[1] || 'impor.waypoint';
-        if (!filename.toLowerCase().endsWith('.waypoint')) throw new Error('File harus berformat .waypoint.');
-        name = filename.replace(/\.waypoint$/i, '');
+        const filename = filePart.match(/filename="([^"]+)"/i)?.[1] || 'import.waypoints';
+        if (!/\.waypoints?$/i.test(filename)) throw new Error('File must use the .waypoint or .waypoints extension.');
+        name = filename.replace(/\.waypoints?$/i, '');
       } else text = request.body.toString('utf8');
     }
-    if (typeof text !== 'string' || !text.trim()) throw new Error('Kirim raw text QGC WPL 110 atau file multipart .waypoint.');
+    if (typeof text !== 'string' || !text.trim()) throw new Error('Send QGC WPL 110 text or a .waypoint/.waypoints multipart file.');
     return response.status(201).json({ ok: true, mission: missions.importMission(text, name) });
   } catch (error) { error.status ||= 400; return next(error); }
 }

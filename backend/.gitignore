@@ -6,4 +6,3 @@ data/logs/*
 !data/logs/.gitkeep
 .env
 .env*
-/mavlink_engine/

@@ -87,7 +87,7 @@ function storeMission(name, waypoints, rawText) {
   fs.mkdirSync(config.missionFolder, { recursive: true });
   const summary = summarize(waypoints);
   const safe = safeName(name);
-  const fileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${safe}.waypoint`;
+  const fileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${safe}.waypoints`;
   const filePath = path.join(config.missionFolder, fileName);
   const tempPath = `${filePath}.tmp`;
   try {
