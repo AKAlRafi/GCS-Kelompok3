@@ -6,9 +6,11 @@ function App() {
   
 
   return (
-    <div>
+    <div className="app-shell">
       <Navbar/>
-      <Map/>
+      <main className="map-stage" id="main-map" aria-label="Flight map">
+        <Map/>
+      </main>
     </div>
   )
 }

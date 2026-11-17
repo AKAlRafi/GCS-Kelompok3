@@ -6,7 +6,7 @@ export default function Map() {
 
   const styles = {
     map: {
-      height: '100vh',
+      height: '100%',
       width: '100%'
     }
   };
