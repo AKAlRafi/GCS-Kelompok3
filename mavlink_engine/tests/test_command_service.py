@@ -277,9 +277,10 @@ def test_rtl_success(command_service, mock_mavlink):
     )
 
 
-def test_land_success(command_service, mock_mavlink):
+def test_land_uses_autoland_mode(command_service, mock_mavlink):
+    mock_mavlink.master.mode_mapping.return_value = {"AUTO": 10, "AUTOLAND": 26}
     mock_mavlink.wait_for.return_value = make_ack(
-        mavutil.mavlink.MAV_CMD_NAV_LAND,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
         mavutil.mavlink.MAV_RESULT_ACCEPTED,
     )
 
@@ -291,18 +292,32 @@ def test_land_success(command_service, mock_mavlink):
         "result": "MAV_RESULT_ACCEPTED",
     }
     mock_mavlink.master.mav.command_long_send.assert_called_once_with(
-        1,
-        1,
-        mavutil.mavlink.MAV_CMD_NAV_LAND,
-        0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
+        1, 1, mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+        float(mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED), 26.0,
+        0.0, 0.0, 0.0, 0.0, 0.0,
     )
+
+
+def test_land_rejected_when_autoland_not_enterable(command_service, mock_mavlink):
+    mock_mavlink.master.mode_mapping.return_value = {"AUTOLAND": 26}
+    mock_mavlink.wait_for.return_value = make_ack(
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        mavutil.mavlink.MAV_RESULT_FAILED,
+    )
+
+    result = command_service.execute_command({"command": "land"})
+
+    assert result["ok"] is False
+    assert "MAV_RESULT_FAILED" in result["error"]
+
+
+def test_land_unsupported_when_mode_missing(command_service, mock_mavlink):
+    mock_mavlink.master.mode_mapping.return_value = {"AUTO": 10}
+
+    result = command_service.execute_command({"command": "land"})
+
+    assert result["ok"] is False
+    assert "unsupported flight mode" in result["error"].lower()
 
 
 # --- ACK Handling & Error Cases ---
@@ -471,7 +486,7 @@ def test_command_ack_timeout(command_service, mock_mavlink):
 def test_command_connection_error(command_service, mock_mavlink):
     mock_mavlink.master.mav.command_long_send.side_effect = OSError("Port disconnected")
 
-    result = command_service.execute_command({"command": "land"})
+    result = command_service.execute_command({"command": "rtl"})
 
     assert result["ok"] is False
     assert "connection error" in result["error"].lower()

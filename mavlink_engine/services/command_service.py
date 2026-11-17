@@ -1,4 +1,6 @@
-"""MAVLink command service for ArduPlane (fixed wing)."""
+"""MAVLink command service for ArduPlane (fixed wing).
+
+The multirotor version is kept in command_service_copter.py."""
 
 import logging
 import time
@@ -217,11 +219,10 @@ class CommandService:
         )
 
     def handle_land(self) -> dict:
-        self.send_command_long(mavutil.mavlink.MAV_CMD_NAV_LAND)
-        return self.wait_command_ack(
-            mavutil.mavlink.MAV_CMD_NAV_LAND,
-            "land",
-        )
+        """ArduPlane has no LAND mode; AUTOLAND flies the approach and lands at home.
+        It can only be entered if the plane took off in TAKEOFF/FBWA/MANUAL/TRAINING/
+        ACRO/STABILIZE or via NAV_TAKEOFF in AUTO; otherwise the FC rejects it."""
+        return self._renamed(self.handle_set_mode("AUTOLAND"), "land")
 
     def execute_command(self, payload: dict) -> dict:
         """Validate and execute an allowed vehicle command."""
