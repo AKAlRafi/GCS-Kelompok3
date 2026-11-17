@@ -1,0 +1,27 @@
+@font-face {
+  font-family: 'Ethnocentric';
+  src: url('../assets/fonts/ethnocentric-italic.otf') format('opentype');
+  font-style: italic;
+  font-weight: 400;
+}
+
+.nav {
+    font-family: 'Ethnocentric', sans-serif;
+    font-style: italic;
+    font-weight: 400;
+    color: #e7c021;
+    display: flex;
+    height: 4vh;
+    border-radius: 10px;
+    border-color: #21305b;
+}
+
+.btn {
+    background-color: #21305b;
+    width: 100px;
+    margin-left: 10px;
+    transform: skew(-15deg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
