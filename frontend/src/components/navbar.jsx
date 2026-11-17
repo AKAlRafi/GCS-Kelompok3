@@ -91,7 +91,7 @@ export default function Navbar() {
         <span className="nav-status-item">
           <span className={`status-dot${connected ? ' is-online' : ''}`} aria-hidden="true" />
           <span className="status-label">Vehicle</span>
-          <strong className={connected ? 'status-value online' : 'status-value'}>{connected ? 'CONNECTED' : 'NO LINK'}</strong>
+          <strong className={connected ? 'status-value online' : 'status-value'}>{connected ? 'CONNECTED' : 'OFFLINE'}</strong>
         </span>
         <span className="mode-display">
           <span className="status-label">Mode</span>

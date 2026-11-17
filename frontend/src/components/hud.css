@@ -1,0 +1,160 @@
+.hud-panel {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  color: #eef4ff;
+  background: #101a2b;
+  border: 1px solid #30415a;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgb(4 10 20 / 38%);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.hud-panel:hover {
+  border-color: #e7c021;
+  box-shadow: 0 12px 30px rgb(4 10 20 / 55%);
+}
+
+.hud-instrument {
+  display: flex;
+  width: 138px;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 6px;
+  background: #0b1422;
+  border: 1px solid #30415a;
+  border-radius: 12px;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.hud-instrument:hover {
+  background: #152239;
+  border-color: #52658e;
+}
+
+.attitude-gauge,
+.compass-gauge {
+  display: block;
+  width: 122px;
+  height: 122px;
+  overflow: visible;
+}
+
+.gauge-face {
+  fill: #222;
+  stroke: #d7deea;
+  stroke-width: 2;
+}
+
+.attitude-sky {
+  fill: #3376bd;
+}
+
+.attitude-ground {
+  fill: #659e46;
+}
+
+.attitude-ladder {
+  fill: #fff;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.attitude-ladder text {
+  stroke: none;
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+.attitude-pointer {
+  fill: #e7c021;
+  stroke: #101a2b;
+  stroke-width: 1;
+}
+
+.aircraft-mark {
+  fill: none;
+  stroke: #f5f7fb;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.gauge-center {
+  fill: #e7c021;
+}
+
+.compass-face {
+  fill: #16191e;
+  stroke: #d7deea;
+  stroke-width: 2;
+}
+
+.compass-mark {
+  stroke: #c6cfdb;
+  stroke-width: 1;
+}
+
+.compass-mark.major {
+  stroke: #fff;
+  stroke-width: 1.8;
+}
+
+.compass-cardinal {
+  fill: #eef4ff;
+  font-size: 11px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.compass-pointer {
+  fill: #d63d46;
+  stroke: #8f202a;
+  stroke-width: 1;
+}
+
+.compass-reading-box {
+  fill: #101a2b;
+  fill-opacity: 0.88;
+  stroke: #e1e6ee;
+  stroke-width: 1;
+}
+
+.compass-reading {
+  fill: #fff;
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.hud-label {
+  color: #aab7ca;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+@media (max-width: 640px) {
+  .hud-panel {
+    right: 10px;
+    bottom: 10px;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .hud-instrument {
+    width: 112px;
+    padding: 6px 4px;
+  }
+
+  .attitude-gauge,
+  .compass-gauge {
+    width: 98px;
+    height: 98px;
+  }
+}
