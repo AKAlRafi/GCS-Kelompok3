@@ -55,6 +55,52 @@ def parse_gps(msg) -> dict:
 def parse_home(msg) -> dict:
     return {"home_lat": msg.latitude / 1e7, "home_lon": msg.longitude / 1e7}
 
+G = 9.81
+
+def parse_imu(msg) -> dict:
+    """SCALED_IMU: acc in mG, gyro in mrad/s, mag in mgauss."""
+    return {
+        "imu_ax": _round(msg.xacc / 1000 * G),
+        "imu_ay": _round(msg.yacc / 1000 * G),
+        "imu_az": _round(msg.zacc / 1000 * G),
+        "imu_gx": _round(math.degrees(msg.xgyro / 1000)),
+        "imu_gy": _round(math.degrees(msg.ygyro / 1000)),
+        "imu_gz": _round(math.degrees(msg.zgyro / 1000)),
+        "imu_mx": _round(msg.xmag / 1000, 3),
+        "imu_my": _round(msg.ymag / 1000, 3),
+        "imu_mz": _round(msg.zmag / 1000, 3),
+    }
+
+RSSI_UNKNOWN = 255
+
+def valid(value):
+    return None if value == RSSI_UNKNOWN else value
+
+def rssi_dbm(raw):
+    """SiK radio (3DR / RFD900) RSSI and noise: dBm = raw / 1.9 - 127. Other radios use other scales."""
+    return None if raw is None else _round(raw / 1.9 - 127, 1)
+
+def parse_rc_channels(msg) -> dict:
+    """RC receiver signal (not the telemetry radio). 0-254, 255 = unknown."""
+    rssi = valid(msg.rssi)
+    return {
+        "rssi": rssi,
+        "rssi_percent": None if rssi is None else min(100, _round((rssi / 254) * 100, 0)),
+    }
+
+def parse_radio_status(msg) -> dict:
+    """Telemetry radio link. Raw values plus dBm (SiK scale)."""
+    rssi = valid(msg.rssi)
+    remrssi = valid(msg.remrssi)
+    return {
+        "radio_rssi": rssi,
+        "radio_rssi_dbm": rssi_dbm(rssi),
+        "radio_remrssi": remrssi,
+        "radio_remrssi_dbm": rssi_dbm(remrssi),
+        "radio_noise_dbm": rssi_dbm(valid(msg.noise)),
+        "radio_txbuf": msg.txbuf,
+    }
+
 HANDLERS = {
     "GLOBAL_POSITION_INT": parse_pos,
     "ATTITUDE": parse_attitude,
@@ -63,6 +109,9 @@ HANDLERS = {
     "SYS_STATUS": parse_sys_status,
     "GPS_RAW_INT": parse_gps,
     "HOME_POSITION": parse_home,
+    "SCALED_IMU": parse_imu,  
+    "RC_CHANNELS": parse_rc_channels,
+    "RADIO_STATUS": parse_radio_status,
 }
 
 def parse_message(msg):
