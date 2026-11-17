@@ -5,13 +5,16 @@ from .. import config
 
 logger = logging.getLogger(__name__)
 
-TELEMETRY_TYPES = ["GLOBAL_POSITION_INT", "ATTITUDE", "VFR_HUD", "HEARTBEAT", "SYS_STATUS", "GPS_RAW_INT"]
+TELEMETRY_TYPES = ["GLOBAL_POSITION_INT", "ATTITUDE", "VFR_HUD", "HEARTBEAT", "SYS_STATUS", "GPS_RAW_INT", "SCALED_IMU"]
 
 # Replies we send
 REPLY_TYPES = ["COMMAND_ACK", "MISSION_COUNT", "MISSION_ITEM_INT", "MISSION_ITEM", "MISSION_REQUEST_INT",
-               "MISSION_REQUEST", "MISSION_ACK", "HOME_POSITION"]
+               "MISSION_REQUEST", "MISSION_ACK", "HOME_POSITION", "RC_CHANNELS", "RADIO_STATUS", "PARAM_VALUE"]
 
-TYPES = TELEMETRY_TYPES + REPLY_TYPES
+# Calibration traffic (handled by calibration_service)
+CALIBRATION_TYPES = ["STATUSTEXT", "MAG_CAL_PROGRESS", "MAG_CAL_REPORT", "COMMAND_LONG"]
+
+TYPES = TELEMETRY_TYPES + REPLY_TYPES + CALIBRATION_TYPES
 
 # Safety cap per read_messages() call
 MAX_MESSAGES_PER_READ = 500
@@ -186,7 +189,6 @@ class MavlinkService:
             self.log_limited(f"MAVLink send {name} failed: {e}")
             return False
         return True
-
 
 
     def log_limited(self, message: str):

@@ -173,6 +173,11 @@ class RedisService:
         """
         return self.publish(self.ack_channel, data, use_backoff=False)
 
+    def publish_event(self, data: dict) -> bool:
+        """Publish a calibration progress event (not dropped by telemetry backoff)."""
+        channel = config.REDIS_CALIBRATION_CHANNEL
+        return self.publish(channel, data, use_backoff=False)
+
     def close(self):
         """Close the connection and reset the client.
         After this, publish_telemetry() returns False until connect()

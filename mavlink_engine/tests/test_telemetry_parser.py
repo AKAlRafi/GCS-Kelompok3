@@ -88,3 +88,40 @@ def test_gps_and_home():
     assert parse_gps(unknown)["hdop"] is None
     home = SimpleNamespace(latitude=-77701234, longitude=1103771234)
     assert parse_home(home) == {"home_lat": -7.7701234, "home_lon": 110.3771234}
+
+
+def test_parse_imu_converts_units():
+    from types import SimpleNamespace
+    from mavlink_engine.parsers.telemetry_parser import parse_imu, parse_message
+    m = SimpleNamespace(xacc=0, yacc=0, zacc=-1000, xgyro=1000, ygyro=0, zgyro=0,
+                        xmag=250, ymag=-100, zmag=400, get_type=lambda: "SCALED_IMU")
+    r = parse_message(m)
+    assert r["imu_az"] == -9.81 and r["imu_gx"] == 57.3 and r["imu_mx"] == 0.25
+    assert parse_imu(m)["imu_my"] == -0.1
+
+
+def test_parse_rc_channels_rssi():
+    from types import SimpleNamespace
+    from mavlink_engine.parsers.telemetry_parser import parse_rc_channels
+    assert parse_rc_channels(SimpleNamespace(rssi=127)) == {"rssi": 127, "rssi_percent": 50.0}
+    assert parse_rc_channels(SimpleNamespace(rssi=254))["rssi_percent"] == 100.0
+    assert parse_rc_channels(SimpleNamespace(rssi=255)) == {"rssi": None, "rssi_percent": None}
+
+
+def test_parse_radio_status_converts_to_dbm():
+    from types import SimpleNamespace
+    from mavlink_engine.parsers.telemetry_parser import parse_radio_status, rssi_dbm
+    m = SimpleNamespace(rssi=190, remrssi=95, noise=57, txbuf=90)
+    r = parse_radio_status(m)
+    assert r["radio_rssi"] == 190 and r["radio_rssi_dbm"] == -27.0
+    assert r["radio_remrssi_dbm"] == -77.0
+    assert r["radio_noise_dbm"] == -97.0 and r["radio_txbuf"] == 90
+    assert rssi_dbm(0) == -127.0 and rssi_dbm(None) is None
+
+
+def test_parse_radio_status_unknown_values_are_none():
+    from types import SimpleNamespace
+    from mavlink_engine.parsers.telemetry_parser import parse_radio_status
+    r = parse_radio_status(SimpleNamespace(rssi=255, remrssi=255, noise=255, txbuf=0))
+    assert r["radio_rssi"] is None and r["radio_rssi_dbm"] is None
+    assert r["radio_remrssi_dbm"] is None and r["radio_noise_dbm"] is None

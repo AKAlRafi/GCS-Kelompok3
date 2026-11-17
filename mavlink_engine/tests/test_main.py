@@ -209,3 +209,19 @@ def test_heartbeat_reporter_lost_and_resumed_once():
     hb.on_heartbeat({"flight_mode": "AUTO", "armed": True}, 1, 9.0)
     assert sum("resumed" in l for l in lines) == 1
     assert len(lines) == 3
+
+
+def test_dispatch_calibration_routes_to_calibration_service():
+    cal = MagicMock()
+    cal.execute.return_value = {"ok": True, "command": "calibrate:gyro"}
+    res = dispatch_command({"id": 5, "type": "calibrate", "payload": {"sensor": "gyro"}},
+                           MagicMock(), MagicMock(), cal)
+    cal.execute.assert_called_once_with("calibrate", {"sensor": "gyro"})
+    assert res["id"] == 5 and res["ok"] is True
+
+
+def test_dispatch_calibration_without_service_is_rejected():
+    cmd_svc = MagicMock()
+    res = dispatch_command({"id": 6, "type": "calibrate_cancel", "payload": {}}, cmd_svc, MagicMock())
+    assert res["ok"] is False
+    cmd_svc.execute_command.assert_not_called()
