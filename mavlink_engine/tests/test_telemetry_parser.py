@@ -125,3 +125,11 @@ def test_parse_radio_status_unknown_values_are_none():
     r = parse_radio_status(SimpleNamespace(rssi=255, remrssi=255, noise=255, txbuf=0))
     assert r["radio_rssi"] is None and r["radio_rssi_dbm"] is None
     assert r["radio_remrssi_dbm"] is None and r["radio_noise_dbm"] is None
+
+def test_parse_servo_unused_output_is_none():
+    from types import SimpleNamespace
+    from mavlink_engine.parsers.telemetry_parser import parse_servo
+    m = SimpleNamespace(**{f"servo{i}_raw": 0 for i in range(1, 9)}, **{})
+    m.servo1_raw, m.servo2_raw = 1500, 1100
+    r = parse_servo(m)
+    assert r["servo1"] == 1500 and r["servo2"] == 1100 and r["servo3"] is None

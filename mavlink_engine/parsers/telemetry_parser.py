@@ -101,6 +101,13 @@ def parse_radio_status(msg) -> dict:
         "radio_txbuf": msg.txbuf,
     }
 
+def parse_servo(msg) -> dict:
+    """SERVO_OUTPUT_RAW: PWM per output in microseconds (0 = output not used)."""
+    return {
+        f"servo{i}": (getattr(msg, f"servo{i}_raw") or None)
+        for i in range(1, 9)
+    }
+
 HANDLERS = {
     "GLOBAL_POSITION_INT": parse_pos,
     "ATTITUDE": parse_attitude,
@@ -112,6 +119,7 @@ HANDLERS = {
     "SCALED_IMU": parse_imu,  
     "RC_CHANNELS": parse_rc_channels,
     "RADIO_STATUS": parse_radio_status,
+    "SERVO_OUTPUT_RAW": parse_servo,
 }
 
 def parse_message(msg):

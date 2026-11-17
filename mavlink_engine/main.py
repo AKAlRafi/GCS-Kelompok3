@@ -32,6 +32,7 @@ HOME_REQUEST_INTERVAL = 5.0
 STREAM_REQUESTS = {"SCALED_IMU": (26, 100000), "RC_CHANNELS": (65, 500000)}
 PARSE_ERROR_LOG_INTERVAL = 5.0   # Avoid log spam
 MAX_COMMANDS_PER_TICK = 10       # Cap command processing per loop iteration
+STREAM_REQUESTS = {"SCALED_IMU": (26, 100000), "RC_CHANNELS": (65, 500000), "SERVO_OUTPUT_RAW": (36, 200000)}   # For servo
 
 
 def serial_ports_hint() -> str:
