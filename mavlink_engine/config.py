@@ -6,6 +6,7 @@ import os
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_CHANNEL = os.getenv("REDIS_CHANNEL", "telemetry")
+REDIS_CALIBRATION_CHANNEL = os.getenv("REDIS_CALIBRATION_CHANNEL", "calibration_events")
 
 # MAVLink
 MAVLINK_URL = os.getenv("MAVLINK_URL", "udpin:0.0.0.0:14551")
