@@ -112,9 +112,24 @@ $mavlinkUrl = if ($ConnectionMode -eq 'USB') { "serial:$SerialPort`:$BaudRate" }
 
 # Start Redis first as WSL root so startup does not pause on a sudo password prompt.
 Write-Host 'Menyalakan Redis di WSL...'
-$redisOutput = & wsl.exe -d ubuntu -u root -- service redis-server start 2>&1
+$hadNativeErrorPreference = Test-Path variable:PSNativeCommandUseErrorActionPreference
+$previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+$PSNativeCommandUseErrorActionPreference = $false
+try {
+  $redisOutput = & wsl.exe -d ubuntu -u root -- service redis-server start 2>&1
+  $redisExitCode = $LASTEXITCODE
+} finally {
+  if ($hadNativeErrorPreference) {
+    $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
+  } else {
+    Remove-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+  }
+}
 if ($redisOutput) { $redisOutput | ForEach-Object { Write-Host $_ } }
-if ($LASTEXITCODE -ne 0) {
+if ($redisOutput -match "Unknown key 'memory'") {
+  Write-Warning "Redis tetap dicoba, tapi .wslconfig kamu perlu bagian [wsl2] sebelum baris memory=2GB."
+}
+if ($redisExitCode -ne 0) {
   throw 'Redis gagal dinyalakan di WSL Ubuntu. Pastikan distro Ubuntu dan paket redis-server tersedia.'
 }
 
@@ -147,16 +162,14 @@ Write-Host 'Redis siap di 127.0.0.1:6379.' -ForegroundColor Green
 
 $quote = [char]39
 $backendCommand = "Set-Location -LiteralPath '$backendRoot';"
-if ($ConnectionMode -eq 'USB') {
-  $commandFlag = if ($EnableCommands) { '1' } else { '0' }
-  $backendCommand += ' $env:MAVLINK_URL=' + $quote + $mavlinkUrl + $quote
-  $backendCommand += '; $env:ENABLE_COMMANDS=' + $quote + $commandFlag + $quote
-  $backendCommand += '; $env:COMMANDS_READY=' + $quote + $commandFlag + $quote + ';'
-}
+$commandFlag = if ($ConnectionMode -eq 'SITL' -or $EnableCommands) { '1' } else { '0' }
+$backendCommand += ' $env:MAVLINK_URL=' + $quote + $mavlinkUrl + $quote
+$backendCommand += '; $env:ENABLE_COMMANDS=' + $quote + $commandFlag + $quote
+$backendCommand += '; $env:COMMANDS_READY=' + $quote + $commandFlag + $quote + ';'
 $backendCommand += ' npm start'
 Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoExit', '-Command', $backendCommand) -WindowStyle Normal
 
-$engineCommands = if ($ConnectionMode -eq 'USB' -and -not $EnableCommands) { '0' } else { '1' }
+$engineCommands = $commandFlag
 $engineCommand = "Set-Location -LiteralPath '$engineRoot'"
 $engineCommand += '; $env:REDIS_HOST=' + $quote + '127.0.0.1' + $quote
 $engineCommand += '; $env:REDIS_PORT=' + $quote + '6379' + $quote
@@ -171,6 +184,7 @@ Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoExit', '-Command', 
 Write-Host "Redis, backend, dan MAVLink engine dijalankan. Koneksi: $mavlinkUrl"
 if ($ConnectionMode -eq 'SITL') {
   Write-Host 'Pastikan start_sitl.bat sudah dijalankan. SITL tidak dimulai ulang oleh skrip ini.'
+  Write-Host 'Perintah GCS aktif untuk SITL.' -ForegroundColor Green
 } elseif (-not $EnableCommands) {
   Write-Host 'Perintah ARM/gerak dinonaktifkan untuk pemeriksaan awal. Telemetri tetap aktif.'
   Write-Host 'Pastikan propeler dilepas. Untuk mengaktifkan perintah, jalankan ulang dengan -EnableCommands.'

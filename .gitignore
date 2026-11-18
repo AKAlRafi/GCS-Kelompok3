@@ -26,6 +26,7 @@ dist-ssr
 *.db
 *.db-shm
 *.db-wal
+.venv
 Thumbs.db
 
 /backend/
