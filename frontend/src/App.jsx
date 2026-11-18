@@ -9,18 +9,27 @@ import { socket } from './services/socket'
 function App() {
   const [telemetry, setTelemetry] = useState({})
   const [followVehicle, setFollowVehicle] = useState(false)
+  const [socketConnected, setSocketConnected] = useState(socket.connected)
+  const [lastTelemetryAt, setLastTelemetryAt] = useState(null)
 
   useEffect(() => {
+    const handleConnect = () => setSocketConnected(true)
+    const handleDisconnect = () => setSocketConnected(false)
     const receiveTelemetry = (data) => {
       if (data && typeof data === 'object') {
         setTelemetry((current) => ({ ...current, ...data }))
+        setLastTelemetryAt(Date.now())
       }
     }
 
+    socket.on('connect', handleConnect)
+    socket.on('disconnect', handleDisconnect)
     socket.on('telemetry', receiveTelemetry)
     socket.connect()
 
     return () => {
+      socket.off('connect', handleConnect)
+      socket.off('disconnect', handleDisconnect)
       socket.off('telemetry', receiveTelemetry)
       socket.disconnect()
     }
@@ -45,8 +54,9 @@ function App() {
         />
         <Hud
           telemetry={telemetry}
-          mapBearing={mapBearing}
           followVehicle={followVehicle}
+          socketConnected={socketConnected}
+          lastTelemetryAt={lastTelemetryAt}
           onToggleFollow={() => setFollowVehicle((following) => !following)}
         />
       </main>
