@@ -4,7 +4,8 @@
   bottom: 18px;
   z-index: 1000;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
   padding: 12px;
   color: #eef4ff;
@@ -20,6 +21,12 @@
   box-shadow: 0 12px 30px rgb(4 10 20 / 55%);
 }
 
+.hud-gauges {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+}
+
 .hud-instrument {
   display: flex;
   width: 138px;
@@ -31,6 +38,40 @@
   border: 1px solid #30415a;
   border-radius: 12px;
   transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.hud-header h2 {
+  margin: 0;
+  color: #e7c021;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.hud-follow {
+  padding: 5px 7px;
+  color: #c2ccda;
+  background: #101a2b;
+  border: 1px solid #40536e;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.hud-follow:hover,
+.hud-follow.active {
+  color: #101a2b;
+  background: #e7c021;
+  border-color: #e7c021;
 }
 
 .hud-instrument:hover {
@@ -58,6 +99,11 @@
 
 .attitude-ground {
   fill: #659e46;
+}
+
+.attitude-horizon {
+  stroke: #fff;
+  stroke-width: 1.5;
 }
 
 .attitude-ladder {
@@ -113,6 +159,10 @@
   text-anchor: middle;
 }
 
+.compass-cardinal.north {
+  fill: #e7c021;
+}
+
 .compass-pointer {
   fill: #d63d46;
   stroke: #8f202a;
@@ -139,22 +189,9 @@
   letter-spacing: 0.1em;
 }
 
-@media (max-width: 640px) {
-  .hud-panel {
-    right: 10px;
-    bottom: 10px;
-    gap: 6px;
-    padding: 8px;
-  }
-
-  .hud-instrument {
-    width: 112px;
-    padding: 6px 4px;
-  }
-
-  .attitude-gauge,
-  .compass-gauge {
-    width: 98px;
-    height: 98px;
-  }
+.hud-reading {
+  color: #eef4ff;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
 }
+

@@ -64,7 +64,7 @@
 .nav-status {
   flex: 1 1 auto;
   justify-content: center;
-  gap: clamp(10px, 1.6vw, 22px);
+  gap: 16px;
 }
 
 .nav-status-item,
@@ -197,7 +197,7 @@
   position: absolute;
   top: calc(100% + 10px);
   right: 20px;
-  max-width: min(380px, calc(100vw - 40px));
+  max-width: 380px;
   padding: 10px 14px;
   color: #f2f6fd;
   background: #1c2a40;
@@ -219,63 +219,3 @@
   border: 0;
 }
 
-@media (max-width: 1100px) {
-  .gcs-navbar {
-    flex-wrap: wrap;
-    gap: 8px 12px;
-    padding: 7px 10px;
-  }
-
-  .brand {
-    flex: 1 1 180px;
-  }
-
-  .nav-status {
-    order: 3;
-    flex-basis: 100%;
-    justify-content: flex-start;
-    padding: 2px;
-  }
-
-  .nav-controls {
-    margin-left: auto;
-  }
-}
-
-@media (max-width: 640px) {
-  .gcs-navbar {
-    gap: 8px;
-  }
-
-  .brand-page,
-  .brand-divider {
-    display: none;
-  }
-
-  .nav-status {
-    gap: 13px;
-    overflow-x: auto;
-  }
-
-  .nav-status-item,
-  .mode-display {
-    gap: 5px;
-  }
-
-  .nav-controls {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    width: 100%;
-    margin: 0;
-  }
-
-  .arm-state {
-    margin-right: auto;
-  }
-
-  .nav-button,
-  .mode-select {
-    min-height: 30px;
-    padding: 0 8px;
-  }
-}

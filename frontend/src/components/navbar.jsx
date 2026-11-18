@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import logo from '../assets/logo.png'
 import './navbar.css'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000/api').replace(/\/$/, '')
@@ -78,7 +77,7 @@ export default function Navbar() {
   return (
     <header className="gcs-navbar">
       <a className="brand" href="#main-map" aria-label="GCS home">
-        <img className="brand-logo" src={logo} alt="" />
+        {/* <img className="brand-logo" src={logo} alt="" /> */}
         <span className="brand-name">Ground Control Station</span>
       </a>
 
