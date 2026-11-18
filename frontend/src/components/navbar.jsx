@@ -6,6 +6,24 @@ const API_TOKEN = import.meta.env.VITE_API_TOKEN || ''
 const MODE_OPTIONS = (import.meta.env.VITE_ALLOWED_FLIGHT_MODES || 'STABILIZE,ACRO,ALT_HOLD,AUTO,GUIDED,LOITER,RTL,FBWA,MANUAL')
   .split(',').map((mode) => mode.trim().toUpperCase()).filter((mode) => mode && mode !== 'TAKEOFF')
 
+  
+export async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {}),
+      ...options.headers,
+    },
+  })
+  if(!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.error || `Request gagal (${response.status})`)
+  }
+  return response;    
+}
+
+export { API_BASE }
 
 async function requestJson(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
