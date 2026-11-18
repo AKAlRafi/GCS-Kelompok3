@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import './navbar.css'
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000/api').replace(/\/$/, '')
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000/api').replace(/\/$/ , '')
 const API_TOKEN = import.meta.env.VITE_API_TOKEN || ''
 const MODE_OPTIONS = (import.meta.env.VITE_ALLOWED_FLIGHT_MODES || 'STABILIZE,ACRO,ALT_HOLD,AUTO,GUIDED,LOITER,RTL,FBWA,MANUAL')
   .split(',').map((mode) => mode.trim().toUpperCase()).filter((mode) => mode && mode !== 'TAKEOFF')
+
 
 async function requestJson(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {

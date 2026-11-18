@@ -125,9 +125,8 @@
   border-color: #e7c021;
 }
 .sidebar-button.danger {
-  color: #ffd6d8;
-  background: #762630;
-  border-color: #a23a45;
+  color: #c30000;
+  border-color: #c30000;
 }
 .sidebar-label {
   margin-bottom: -4px;
@@ -232,8 +231,8 @@
   font-size: 8px;
 }
 .safety-placeholder {
-  color: #e7c021;
-  border-color: #e7c021;
+  color: #009b00;
+  border-color: #009b00;
 }
 .more-toggle {
   flex: 0 0 34px;

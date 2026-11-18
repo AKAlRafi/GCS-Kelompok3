@@ -18,6 +18,36 @@ const telemetryItems = [
   ['HDOP', '—', ''],
 ]
 
+const extraTelemetryGroups = [
+  {
+    title: 'IMU',
+    items: [
+      ['Accel X', '—', 'm/s²'], ['Accel Y', '—', 'm/s²'], ['Accel Z', '—', 'm/s²'],
+      ['Gyro X', '—', '°/s'], ['Gyro Y', '—', '°/s'], ['Gyro Z', '—', '°/s'],
+      ['Mag X', '—', 'G'], ['Mag Y', '—', 'G'], ['Mag Z', '—', 'G'],
+    ],
+  },
+  {
+    title: 'RC Link',
+    items: [['RSSI Raw', '—', ''], ['Signal', '—', '%']],
+  },
+  {
+    title: 'Telemetry Radio',
+    items: [
+      ['Local RSSI Raw', '—', ''], ['Local RSSI', '—', 'dBm'],
+      ['Remote RSSI Raw', '—', ''], ['Remote RSSI', '—', 'dBm'],
+      ['Noise', '—', 'dBm'], ['TX Buffer', '—', '%'],
+    ],
+  },
+  {
+    title: 'Servo Outputs',
+    items: [
+      ['Servo 1', '—', 'µs'], ['Servo 2', '—', 'µs'], ['Servo 3', '—', 'µs'], ['Servo 4', '—', 'µs'],
+      ['Servo 5', '—', 'µs'], ['Servo 6', '—', 'µs'], ['Servo 7', '—', 'µs'], ['Servo 8', '—', 'µs'],
+    ],
+  },
+]
+
 function PlaceholderButton({ children, primary = false, danger = false }) {
   return (
     <button
@@ -121,6 +151,20 @@ function PlaneStatusSidebar() {
           ))}
         </div>
       </section>
+
+      {extraTelemetryGroups.map((group) => (
+        <section className="sidebar-section" key={group.title}>
+          <h3>{group.title}</h3>
+          <div className="telemetry-placeholder-grid">
+            {group.items.map(([label, value, unit]) => (
+              <div className="telemetry-placeholder" key={label}>
+                <span>{label}</span>
+                <b>{value}<small>{unit}</small></b>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
 
       <section className="sidebar-section">
         <h3>Safety</h3>
