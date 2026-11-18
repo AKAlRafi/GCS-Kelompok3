@@ -1,0 +1,29 @@
+.more {
+    position: absolute;
+    top: 90px;
+    right: 92.5vw;
+    left: 16px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 14px;
+    color: #eef4ff;
+    background: #101a2b;
+    border: 1px solid #30415a;
+    border-radius: 14px;
+    box-sizing: border-box;
+}
+
+.mission {
+    padding-right: 16px;
+    padding-left: 16px;
+}
+
+.mission:hover {
+    background-color: #e7c021;
+    color: #101a2b;
+    cursor: pointer;
+}
