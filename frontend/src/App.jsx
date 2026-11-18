@@ -54,6 +54,7 @@ function App() {
         />
         <Hud
           telemetry={telemetry}
+          mapBearing={mapBearing}
           followVehicle={followVehicle}
           socketConnected={socketConnected}
           lastTelemetryAt={lastTelemetryAt}

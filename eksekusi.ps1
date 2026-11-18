@@ -39,6 +39,10 @@ if (-not (Test-Path (Join-Path $backendRoot 'node_modules'))) {
   throw 'Backend belum siap. Jalankan npm install di backend\server terlebih dahulu.'
 }
 
+if (Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue) {
+  throw 'Backend sudah berjalan di port 5000. Tutup jendela backend yang lama sebelum menjalankan run.bat lagi.'
+}
+
 if ($ConnectionMode -eq 'USB') {
   $portOutput = & $enginePython $serialPortTool list 2>$null
   if ($LASTEXITCODE -ne 0) {
@@ -59,7 +63,7 @@ if ($ConnectionMode -eq 'USB') {
   ) | Sort-Object Port
 
   if ($portEntries.Count -eq 0) {
-    throw 'Tidak ada port serial aktif yang terdeteksi. Port abu-abu di Device Manager adalah perangkat lama yang sedang tidak tersambung.'
+    throw 'Tidak ada port serial aktif yang terdeteksi. Periksa kabel data dan driver FC.'
   }
 
   if ([string]::IsNullOrWhiteSpace($SerialPort)) {
@@ -141,28 +145,47 @@ if ($redisExitCode -ne 0) {
 }
 
 $redisReady = $false
-for ($attempt = 0; $attempt -lt 20; $attempt++) {
-  $tcpClient = [System.Net.Sockets.TcpClient]::new()
+$successCount = 0
+for ($attempt = 0; $attempt -lt 30; $attempt++) {
+  $client = [System.Net.Sockets.TcpClient]::new()
   try {
-    $connectAttempt = $tcpClient.BeginConnect('127.0.0.1', 6379, $null, $null)
-    if ($connectAttempt.AsyncWaitHandle.WaitOne(200, $false)) {
-      $tcpClient.EndConnect($connectAttempt)
-      $redisReady = $true
-      break
+    $connection = $client.BeginConnect('127.0.0.1', 6379, $null, $null)
+    if (-not $connection.AsyncWaitHandle.WaitOne(400, $false)) {
+      throw 'Redis belum bisa dijangkau.'
+    }
+
+    $client.EndConnect($connection)
+    $stream = $client.GetStream()
+    $stream.ReadTimeout = 500
+    $stream.WriteTimeout = 500
+    $request = [System.Text.Encoding]::ASCII.GetBytes("*1`r`n`$4`r`nPING`r`n")
+    $stream.Write($request, 0, $request.Length)
+
+    $buffer = New-Object byte[] 16
+    $length = $stream.Read($buffer, 0, $buffer.Length)
+    $response = [System.Text.Encoding]::ASCII.GetString($buffer, 0, $length).Trim()
+    if ($response -eq '+PONG') {
+      $successCount++
+      if ($successCount -eq 3) {
+        $redisReady = $true
+        break
+      }
+    } else {
+      $successCount = 0
     }
   } catch {
-    # Redis bisa butuh waktu sebentar untuk mulai.
+    $successCount = 0
   } finally {
-    $tcpClient.Dispose()
+    $client.Dispose()
   }
 
-  if ($attempt -lt 19) {
+  if ($attempt -lt 29) {
     Start-Sleep -Milliseconds 250
   }
 }
 
 if (-not $redisReady) {
-  throw 'Redis sudah diminta untuk menyala, tetapi 127.0.0.1:6379 belum bisa diakses. Backend dan MAVLink engine tidak dijalankan.'
+  throw 'Redis belum menjawab PING dari Windows di 127.0.0.1:6379. Backend dan MAVLink engine tidak dijalankan.'
 }
 Write-Host 'Redis siap di 127.0.0.1:6379.' -ForegroundColor Green
 

@@ -59,6 +59,43 @@ database.exec(`
     ON telemetry_records(log_id, recorded_at);
 `);
 
+const telemetryExtraColumns = {
+  gps_fix_type: 'INTEGER',
+  satellites_visible: 'INTEGER',
+  hdop: 'REAL',
+  imu_ax: 'REAL',
+  imu_ay: 'REAL',
+  imu_az: 'REAL',
+  imu_gx: 'REAL',
+  imu_gy: 'REAL',
+  imu_gz: 'REAL',
+  imu_mx: 'REAL',
+  imu_my: 'REAL',
+  imu_mz: 'REAL',
+  rssi: 'INTEGER',
+  rssi_percent: 'REAL',
+  radio_rssi: 'INTEGER',
+  radio_rssi_dbm: 'REAL',
+  radio_remrssi: 'INTEGER',
+  radio_remrssi_dbm: 'REAL',
+  radio_noise_dbm: 'REAL',
+  radio_txbuf: 'INTEGER',
+  servo1: 'INTEGER',
+  servo2: 'INTEGER',
+  servo3: 'INTEGER',
+  servo4: 'INTEGER',
+  servo5: 'INTEGER',
+  servo6: 'INTEGER',
+  servo7: 'INTEGER',
+  servo8: 'INTEGER'
+};
+const existingTelemetryColumns = new Set(database.pragma('table_info(telemetry_records)').map((column) => column.name));
+for (const [name, type] of Object.entries(telemetryExtraColumns)) {
+  if (!existingTelemetryColumns.has(name)) {
+    database.exec(`ALTER TABLE telemetry_records ADD COLUMN ${name} ${type}`);
+  }
+}
+
 const insertDefaultParameter = database.prepare(`
   INSERT OR IGNORE INTO parameters (name, value, unit, description)
   VALUES (?, ?, ?, ?)
@@ -76,16 +113,27 @@ const maxPendingTelemetryRecords = 10000;
 const telemetryRecordsPerBatch = 250;
 const telemetryColumns = [
   'latitude', 'longitude', 'altitude', 'relative_altitude', 'ground_speed',
-  'air_speed', 'roll', 'pitch', 'yaw', 'heading', 'battery_percent'
+  'air_speed', 'roll', 'pitch', 'yaw', 'heading', 'battery_percent',
+  ...Object.keys(telemetryExtraColumns)
 ];
 const insertTelemetry = database.prepare(`
   INSERT INTO telemetry_records (
     log_id, recorded_at, latitude, longitude, altitude, relative_altitude,
     ground_speed, air_speed, roll, pitch, yaw, heading, battery_percent,
+    gps_fix_type, satellites_visible, hdop,
+    imu_ax, imu_ay, imu_az, imu_gx, imu_gy, imu_gz, imu_mx, imu_my, imu_mz,
+    rssi, rssi_percent, radio_rssi, radio_rssi_dbm, radio_remrssi,
+    radio_remrssi_dbm, radio_noise_dbm, radio_txbuf,
+    servo1, servo2, servo3, servo4, servo5, servo6, servo7, servo8,
     flight_mode, armed
   ) VALUES (
     @log_id, @recorded_at, @latitude, @longitude, @altitude, @relative_altitude,
     @ground_speed, @air_speed, @roll, @pitch, @yaw, @heading, @battery_percent,
+    @gps_fix_type, @satellites_visible, @hdop,
+    @imu_ax, @imu_ay, @imu_az, @imu_gx, @imu_gy, @imu_gz, @imu_mx, @imu_my, @imu_mz,
+    @rssi, @rssi_percent, @radio_rssi, @radio_rssi_dbm, @radio_remrssi,
+    @radio_remrssi_dbm, @radio_noise_dbm, @radio_txbuf,
+    @servo1, @servo2, @servo3, @servo4, @servo5, @servo6, @servo7, @servo8,
     @flight_mode, @armed
   )
 `);

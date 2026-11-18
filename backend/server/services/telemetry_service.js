@@ -23,7 +23,11 @@ const telemetryNumberFields = [
   'climb_rate', 'gps_fix_type', 'satellites_visible', 'satellite_count', 'gps_satellites',
   'eph', 'hdop', 'home_lat', 'home_lon', 'home_latitude', 'home_longitude',
   'latitude', 'longitude', 'absolute_altitude', 'relative_altitude', 'ground_speed', 'air_speed',
-  'heartbeat_timestamp'
+  'heartbeat_timestamp',
+  'imu_ax', 'imu_ay', 'imu_az', 'imu_gx', 'imu_gy', 'imu_gz', 'imu_mx', 'imu_my', 'imu_mz',
+  'rssi', 'rssi_percent', 'radio_rssi', 'radio_rssi_dbm', 'radio_remrssi',
+  'radio_remrssi_dbm', 'radio_noise_dbm', 'radio_txbuf',
+  'servo1', 'servo2', 'servo3', 'servo4', 'servo5', 'servo6', 'servo7', 'servo8'
 ];
 
 for (const [name, client] of [['Redis', publisherClient], ['Redis subscriber', subscriberClient]]) {
