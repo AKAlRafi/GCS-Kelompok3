@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import Hud from './components/hud'
 import Map from './components/map'
 import Navbar from './components/navbar'
-import More from './components/sidebar'
+import Sidebar from './components/sidebar'
+import ParameterSearch from './components/param-searchbar'
+import { apiJson, apiRequest } from './services/api'
 import { socket } from './services/socket'
 
 function App() {
@@ -11,29 +13,308 @@ function App() {
   const [followVehicle, setFollowVehicle] = useState(false)
   const [socketConnected, setSocketConnected] = useState(socket.connected)
   const [lastTelemetryAt, setLastTelemetryAt] = useState(null)
+  const [waypoints, setWaypoints] = useState([])
+  const [addingWaypoint, setAddingWaypoint] = useState(false)
+  const [missionName, setMissionName] = useState('')
+  const [missions, setMissions] = useState([])
+  const [selectedMissionId, setSelectedMissionId] = useState('')
+  const [missionDirty, setMissionDirty] = useState(false)
+  const [missionProgress, setMissionProgress] = useState(null)
+  const [navigationGuidance, setNavigationGuidance] = useState(null)
+  const [missionPaused, setMissionPaused] = useState(false)
+  const [flightLogs, setFlightLogs] = useState([])
+  const [activeLog, setActiveLog] = useState({ active: false, id: null })
+  const [serverOnline, setServerOnline] = useState(false)
+  const [vehicleConnected, setVehicleConnected] = useState(false)
+  const [homeVisible, setHomeVisible] = useState(true)
+  const [routeVisible, setRouteVisible] = useState(true)
+  const [trailVisible, setTrailVisible] = useState(true)
+  const [flightTrail, setFlightTrail] = useState([])
+  const [resetToken, setResetToken] = useState(0)
+  const [busyAction, setBusyAction] = useState('')
+  const [sidebarMessage, setSidebarMessage] = useState('')
+  const [safetyAlert, setSafetyAlert] = useState('')
+
+  const receiveTelemetry = useCallback((data) => {
+    if (!data || typeof data !== 'object') return
+    setTelemetry((current) => ({ ...current, ...data }))
+    const receivedAt = Date.parse(data.received_at)
+    setLastTelemetryAt(Number.isFinite(receivedAt) ? receivedAt : Date.now())
+    const lat = Number(data.lat)
+    const lon = Number(data.lon)
+    if (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0)) {
+      setFlightTrail((current) => {
+        const previous = current[current.length - 1]
+        if (previous && Math.abs(previous.lat - lat) < 0.000004 && Math.abs(previous.lon - lon) < 0.000004) return current
+        return [...current.slice(-999), { lat, lon }]
+      })
+    }
+  }, [])
+
+  const loadMissions = useCallback(async () => {
+    const data = await apiJson('/missions')
+    setMissions(data.missions || [])
+  }, [])
+
+  const loadFlightLogs = useCallback(async () => {
+    const [logs, status] = await Promise.all([
+      apiJson('/logs'),
+      apiJson('/logs/status'),
+    ])
+    setFlightLogs(Array.isArray(logs) ? logs : [])
+    setActiveLog(status || { active: false, id: null })
+  }, [])
+
+  const loadMission = useCallback(async (id) => {
+    if (!id) return
+    const data = await apiJson(`/missions/${id}`)
+    const mission = data.mission
+    setSelectedMissionId(String(mission.id))
+    setMissionName(mission.name || '')
+    setWaypoints((mission.waypoints || []).map((point, index) => ({
+      ...point,
+      id: `${mission.id}-${index}-${crypto.randomUUID()}`,
+    })))
+    setMissionDirty(false)
+    setMissionProgress(null)
+    setNavigationGuidance(null)
+    setMissionPaused(false)
+  }, [])
+
+  const saveMission = useCallback(async () => {
+    if (!missionName.trim()) throw new Error('Isi nama misi dulu.')
+    if (waypoints.length === 0) throw new Error('Tambahkan waypoint dulu.')
+    const data = await apiJson('/missions', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: missionName.trim(),
+        waypoints: waypoints.map(({ command, frame, param1, param2, param3, param4, lat, lon, alt, autocontinue }) => ({
+          command, frame, param1, param2, param3, param4, lat, lon, alt, autocontinue,
+        })),
+      }),
+    })
+    setSelectedMissionId(String(data.mission.id))
+    setMissionDirty(false)
+    await loadMissions()
+    return String(data.mission.id)
+  }, [loadMissions, missionName, waypoints])
+
+  const ensureSavedMission = useCallback(async (requestedId) => {
+    if (!missionDirty && requestedId && String(requestedId) === selectedMissionId) return selectedMissionId
+    return saveMission()
+  }, [missionDirty, saveMission, selectedMissionId])
+
+  const downloadMission = useCallback(async (id) => {
+    if (!id) throw new Error('Pilih misi yang mau diunduh.')
+    const response = await apiRequest(`/missions/${id}/download`)
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = missions.find((mission) => String(mission.id) === String(id))?.file_name || 'mission.waypoints'
+    link.click()
+    URL.revokeObjectURL(url)
+  }, [missions])
+
+  const importMission = useCallback(async (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    const data = await apiJson('/missions/import', { method: 'POST', body: form })
+    await loadMissions()
+    await loadMission(data.mission.id)
+  }, [loadMission, loadMissions])
+
+  const uploadMission = useCallback(async (id) => {
+    const missionId = await ensureSavedMission(id)
+    const result = await apiJson(`/missions/${missionId}/upload`, { method: 'POST' })
+    if (result.ok === false) throw new Error(result.error || 'Upload misi ditolak.')
+  }, [ensureSavedMission])
+
+  const startMission = useCallback(async (id) => {
+    const missionId = await ensureSavedMission(id)
+    setMissionProgress({ stage: 'PREPARING', active_waypoint: 0 })
+    setMissionPaused(false)
+    const result = await apiJson(`/missions/${missionId}/start`, { method: 'POST' })
+    if (result.ok === false) throw new Error(result.error || 'Misi gagal dimulai.')
+  }, [ensureSavedMission])
+
+  const sendMissionCommand = useCallback(async (type) => {
+    const result = await apiJson('/missions/command', {
+      method: 'POST',
+      body: JSON.stringify({ type }),
+    })
+    if (result.ok === false) throw new Error(result.error || `Perintah ${type} ditolak.`)
+    return result
+  }, [])
+
+  const pauseMission = useCallback(async () => {
+    await sendMissionCommand('pause_mission')
+    setMissionPaused(true)
+    setMissionProgress((current) => ({ ...current, stage: 'PAUSED' }))
+  }, [sendMissionCommand])
+
+  const resumeMission = useCallback(async () => {
+    await sendMissionCommand('resume_mission')
+    setMissionPaused(false)
+    setMissionProgress((current) => ({ ...current, stage: 'NAVIGATING_WAYPOINT' }))
+  }, [sendMissionCommand])
+
+  const clearDroneMission = useCallback(async () => {
+    if (!window.confirm('Hapus misi yang tersimpan di flight controller?')) return false
+    await sendMissionCommand('clear_mission')
+    return true
+  }, [sendMissionCommand])
+
+  const deleteMission = useCallback(async (id) => {
+    if (!id) throw new Error('Pilih misi yang mau dihapus.')
+    if (!window.confirm('Hapus misi tersimpan ini dari komputer?')) return false
+    await apiJson(`/missions/${id}`, { method: 'DELETE' })
+    setMissions((current) => current.filter((mission) => String(mission.id) !== String(id)))
+    if (String(id) === selectedMissionId) {
+      setSelectedMissionId('')
+      setWaypoints([])
+      setMissionName('')
+      setMissionDirty(false)
+    }
+  }, [selectedMissionId])
+
+  const resetMap = useCallback(() => {
+    setWaypoints([])
+    setMissionName('')
+    setSelectedMissionId('')
+    setMissionDirty(false)
+    setAddingWaypoint(false)
+    setMissionProgress(null)
+    setNavigationGuidance(null)
+    setFlightTrail([])
+    setFollowVehicle(false)
+    setResetToken((current) => current + 1)
+  }, [])
+
+  const startFlightLog = useCallback(async () => {
+    await apiJson('/logs/start', { method: 'POST', body: JSON.stringify({ name: 'flight' }) })
+    await loadFlightLogs()
+  }, [loadFlightLogs])
+
+  const stopFlightLog = useCallback(async () => {
+    await apiJson('/logs/stop', { method: 'POST' })
+    await loadFlightLogs()
+  }, [loadFlightLogs])
+
+  const downloadFlightLog = useCallback(async (id) => {
+    const response = await apiRequest(`/logs/${id}/download`)
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = flightLogs.find((log) => Number(log.id) === Number(id))?.file_name || `flight-${id}.jsonl`
+    link.click()
+    URL.revokeObjectURL(url)
+  }, [flightLogs])
+
+  const updateWaypoint = useCallback((id, changes) => {
+    setWaypoints((current) => current.map((point) => point.id === id ? { ...point, ...changes } : point))
+    setMissionDirty(true)
+  }, [])
+
+  const addWaypoint = useCallback((position) => {
+    setWaypoints((current) => [...current, {
+      id: crypto.randomUUID(), command: 16, frame: 3, lat: position.lat, lon: position.lon, alt: 10,
+      param1: 0, param2: 0, param3: 0, param4: 0, autocontinue: 1,
+    }])
+    setMissionDirty(true)
+    setAddingWaypoint(false)
+  }, [])
+
+  const deleteWaypoint = useCallback((id) => {
+    setWaypoints((current) => current.filter((point) => point.id !== id))
+    setMissionDirty(true)
+  }, [])
+
+  const runAction = useCallback(async (name, action) => {
+    setBusyAction(name)
+    setSidebarMessage('')
+    try {
+      const result = await action()
+      if (result === false) return
+      setSidebarMessage(`${name} berhasil.`)
+    } catch (error) {
+      setSidebarMessage(error.message || 'Aksi gagal dijalankan.')
+    } finally {
+      setBusyAction('')
+    }
+  }, [])
 
   useEffect(() => {
     const handleConnect = () => setSocketConnected(true)
     const handleDisconnect = () => setSocketConnected(false)
-    const receiveTelemetry = (data) => {
-      if (data && typeof data === 'object') {
-        setTelemetry((current) => ({ ...current, ...data }))
-        setLastTelemetryAt(Date.now())
-      }
+    const handleMissionProgress = (progress) => {
+      setMissionProgress(progress)
+      if (progress.stage === 'COMPLETED') setMissionPaused(false)
     }
+    const handleNavigationGuidance = setNavigationGuidance
+    const handleFailsafe = (warning) => setSafetyAlert(warning?.message || warning?.reason || 'Safety alert')
 
     socket.on('connect', handleConnect)
     socket.on('disconnect', handleDisconnect)
     socket.on('telemetry', receiveTelemetry)
+    socket.on('mission_progress', handleMissionProgress)
+    socket.on('navigation_guidance', handleNavigationGuidance)
+    socket.on('failsafe_warning', handleFailsafe)
     socket.connect()
 
     return () => {
       socket.off('connect', handleConnect)
       socket.off('disconnect', handleDisconnect)
       socket.off('telemetry', receiveTelemetry)
+      socket.off('mission_progress', handleMissionProgress)
+      socket.off('navigation_guidance', handleNavigationGuidance)
+      socket.off('failsafe_warning', handleFailsafe)
       socket.disconnect()
     }
-  }, [])
+  }, [receiveTelemetry])
+
+  useEffect(() => {
+    let active = true
+    const refreshStatus = async () => {
+      try {
+        const [health, connection, state] = await Promise.all([
+          apiJson('/health'), apiJson('/connection/status'), apiJson('/telemetry'),
+        ])
+        if (!active) return
+        setServerOnline(Boolean(health.ok))
+        setVehicleConnected(Boolean(connection.connected))
+        if (state && Object.keys(state).length) receiveTelemetry(state)
+      } catch {
+        if (active) {
+          setServerOnline(false)
+          setVehicleConnected(false)
+        }
+      }
+    }
+
+    void refreshStatus()
+    const timer = window.setInterval(refreshStatus, 2000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [receiveTelemetry])
+
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => {
+      void loadMissions().catch((error) => setSidebarMessage(error.message))
+      void loadFlightLogs().catch(() => {})
+    }, 0)
+    const timer = window.setInterval(() => {
+      void loadMissions().catch(() => {})
+      void loadFlightLogs().catch(() => {})
+    }, 10000)
+    return () => {
+      window.clearTimeout(initialLoad)
+      window.clearInterval(timer)
+    }
+  }, [loadFlightLogs, loadMissions])
 
   const rawHeading = telemetry.heading ?? telemetry.yaw
   const heading = Number(rawHeading)
@@ -43,14 +324,68 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Navbar/>
-      <More/>
+      <Navbar />
+      <Sidebar
+        waypoints={waypoints}
+        missions={missions}
+        missionName={missionName}
+        selectedMissionId={selectedMissionId}
+        missionProgress={missionProgress}
+        navigationGuidance={navigationGuidance}
+        activeLog={activeLog}
+        flightLogs={flightLogs}
+        telemetry={telemetry}
+        serverOnline={serverOnline}
+        vehicleConnected={vehicleConnected}
+        socketConnected={socketConnected}
+        lastTelemetryAt={lastTelemetryAt}
+        safetyAlert={safetyAlert}
+        busyAction={busyAction}
+        message={sidebarMessage}
+        addingWaypoint={addingWaypoint}
+        homeVisible={homeVisible}
+        routeVisible={routeVisible}
+        trailVisible={trailVisible}
+        missionPaused={missionPaused}
+        onAddWaypointMode={() => setAddingWaypoint((current) => !current)}
+        onUpdateWaypoint={updateWaypoint}
+        onDeleteWaypoint={deleteWaypoint}
+        onMissionNameChange={(value) => { setMissionName(value); setMissionDirty(true) }}
+        onLoadMission={(id) => runAction('Load mission', () => loadMission(id))}
+        onSaveMission={() => runAction('Save mission', saveMission)}
+        onUploadMission={(id) => runAction('Upload mission', () => uploadMission(id))}
+        onStartMission={(id) => runAction('Start mission', () => startMission(id))}
+        onPauseMission={() => runAction('Pause mission', pauseMission)}
+        onResumeMission={() => runAction('Resume mission', resumeMission)}
+        onClearDroneMission={() => runAction('Clear mission on drone', clearDroneMission)}
+        onDeleteMission={(id) => runAction('Delete mission', () => deleteMission(id))}
+        onDownloadMission={(id) => runAction('Download mission', () => downloadMission(id))}
+        onResetMap={resetMap}
+        onImportMission={(file) => runAction('Import mission', () => importMission(file))}
+        onToggleHome={() => setHomeVisible((current) => !current)}
+        onToggleRoute={() => setRouteVisible((current) => !current)}
+        onToggleTrail={() => setTrailVisible((current) => !current)}
+        onStartLog={() => runAction('Start flight log', startFlightLog)}
+        onStopLog={() => runAction('Stop flight log', stopFlightLog)}
+        onDownloadLog={(id) => runAction('Download flight log', () => downloadFlightLog(id))}
+        onRefreshLogs={() => runAction('Refresh flight logs', loadFlightLogs)}
+      />
+      <ParameterSearch />
       <main className="map-stage" id="main-map" aria-label="Flight map">
         <Map
           position={{ lat: telemetry.lat, lon: telemetry.lon }}
           heading={rawHeading}
           followVehicle={followVehicle}
           mapBearing={mapBearing}
+          addingWaypoint={addingWaypoint}
+          waypoints={waypoints}
+          home={{ lat: telemetry.home_lat, lon: telemetry.home_lon }}
+          flightTrail={flightTrail}
+          showHome={homeVisible}
+          showRoute={routeVisible}
+          showTrail={trailVisible}
+          resetToken={resetToken}
+          onMapClick={addWaypoint}
         />
         <Hud
           telemetry={telemetry}

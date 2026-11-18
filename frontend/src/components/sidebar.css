@@ -89,6 +89,15 @@
   font-weight: 700;
   letter-spacing: 0.04em;
 }
+.sidebar-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sidebar-section-heading h3 {
+  flex: 1 1 auto;
+}
 .sidebar-button-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -108,7 +117,7 @@
   font-size: 10px;
   line-height: 1.35;
   text-align: center;
-  cursor: default;
+  cursor: pointer;
 }
 .sidebar-button:hover {
   color: #e7c021;
@@ -123,6 +132,15 @@
 .sidebar-button.primary:hover {
   background: rgb(231 192 33 / 15%);
   border-color: #e7c021;
+}
+.sidebar-button.selected {
+  background: rgb(231 192 33 / 15%);
+}
+.sidebar-button:disabled,
+.waypoint-row input:disabled,
+.sidebar-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 .sidebar-button.danger {
   color: #c30000;
@@ -163,14 +181,130 @@
 }
 .waypoint-placeholder-head {
   display: grid;
-  grid-template-columns: 24px 1fr 60px;
+  grid-template-columns: 22px minmax(0, 1fr) 58px 22px;
+  gap: 5px;
   color: #aebbd0;
   font-size: 9px;
 }
-.waypoint-placeholder p {
+.waypoint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  background: #101a2b;
+  border: 1px solid #e7c021;
+  border-radius: 7px;
+}
+.waypoint-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 58px 22px;
+  align-items: center;
+  gap: 5px;
+  color: #e7c021;
+  font-size: 9px;
+}
+.waypoint-coordinates {
+  overflow: hidden;
+  color: #aebbd0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.waypoint-row input {
+  width: 58px;
+  min-width: 0;
+  padding: 4px;
+  color: #e7c021;
+  background: #0b1422;
+  border: 1px solid #e7c021;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 10px;
+}
+.waypoint-delete {
+  width: 22px;
+  height: 24px;
+  padding: 0;
+  color: #ffd6d8;
+  background: #762630;
+  border: 1px solid #a23a45;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.waypoint-delete:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.empty-placeholder {
   margin: 10px 0 2px;
   color: #71819b;
   text-align: center;
+}
+.sidebar-file-input {
+  display: none;
+}
+.sidebar-message {
+  padding: 8px 10px;
+  color: #e7c021;
+  background: #101a2b;
+  border: 1px solid #e7c021;
+  border-radius: 7px;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.sidebar-refresh {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: #e7c021;
+  background: #101a2b;
+  border: 1px solid #e7c021;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.sidebar-refresh:hover {
+  background: rgb(231 192 33 / 15%);
+}
+.log-state {
+  display: flex;
+  align-items: center;
+  color: #91a1ba;
+  font-size: 9px;
+}
+.flight-log-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  color: #e7c021;
+  background: #101a2b;
+  border: 1px solid #e7c021;
+  border-radius: 7px;
+  font-size: 10px;
+}
+.flight-log-row span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.flight-log-row b,
+.flight-log-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flight-log-row small {
+  color: #91a1ba;
+  font-size: 8px;
+}
+.telemetry-state {
+  color: #ffd36b;
+  font-size: 9px;
+}
+.telemetry-state.live {
+  color: #31d2a7;
 }
 .sidebar-note {
   color: #71819b;
@@ -233,6 +367,11 @@
 .safety-placeholder {
   color: #009b00;
   border-color: #009b00;
+}
+.safety-placeholder.has-alert {
+  color: #ffd6d8;
+  background: #762630;
+  border-color: #a23a45;
 }
 .more-toggle {
   flex: 0 0 34px;

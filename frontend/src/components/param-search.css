@@ -5,6 +5,11 @@
   z-index: 1001;
   width: 320px;
   max-width: calc(100vw - 32px);
+  background-color: #101a2b;
+  border: 1px solid #e7c021;
+  border-radius: 14px;
+  color: #e7c021;
+  font-size: 10px;
 }
 .param-search-input {
   width: 100%;
