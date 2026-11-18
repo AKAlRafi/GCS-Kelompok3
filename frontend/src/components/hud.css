@@ -1,0 +1,171 @@
+.hud-panel {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px;
+  color: #eef4ff;
+  background: #101a2b;
+  border: 1px solid #e7c021;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgb(4 10 20 / 38%);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.hud-panel:hover {
+  border-color: #e7c021;
+  box-shadow: 0 12px 30px rgb(4 10 20 / 55%);
+}
+.hud-gauges {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+}
+.hud-instrument {
+  display: flex;
+  width: 138px;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 6px;
+  background: #0b1422;
+  border: 1px solid #e7c021;
+  border-radius: 12px;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+.hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+.hud-header h2 {
+  margin: 0;
+  color: #e7c021;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+.hud-follow {
+  padding: 5px 7px;
+  color: #e7c021;
+  background: #101a2b;
+  border: 1px solid #e7c021;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.hud-follow:hover,.hud-follow.active {
+  color: #e7c021;
+  background: rgb(231 192 33 / 15%);
+  border-color: #e7c021;
+}
+.hud-follow:focus-visible {
+  outline: 2px solid #e7c021;
+  outline-offset: 2px;
+}
+.hud-instrument:hover {
+  background: rgb(231 192 33 / 10%);
+  border-color: #e7c021;
+}
+.attitude-gauge,.compass-gauge {
+  display: block;
+  width: 122px;
+  height: 122px;
+  overflow: visible;
+}
+.gauge-face {
+  fill: #222;
+  stroke: #e7c021;
+  stroke-width: 2;
+}
+.attitude-sky {
+  fill: #3376bd;
+}
+.attitude-ground {
+  fill: #659e46;
+}
+.attitude-horizon {
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+.attitude-ladder {
+  fill: #e7c021;
+  stroke: #e7c021;
+  stroke-width: 1.5;
+}
+.attitude-ladder text {
+  stroke: none;
+  fill: #e7c021;
+  font-size: 9px;
+  text-anchor: middle;
+}
+.attitude-pointer {
+  fill: #e7c021;
+  stroke: #101a2b;
+  stroke-width: 1;
+}
+.aircraft-mark {
+  fill: none;
+  stroke: #e7c021;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.gauge-center {
+  fill: #e7c021;
+}
+.compass-face {
+  fill: #16191e;
+  stroke: #e7c021;
+  stroke-width: 2;
+}
+.compass-mark {
+  stroke: #e7c021;
+  stroke-width: 1;
+}
+.compass-mark.major {
+  stroke: #e7c021;
+  stroke-width: 1.8;
+}
+.compass-cardinal {
+  fill: #e7c021;
+  font-size: 11px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+.compass-cardinal.north {
+  fill: #e34b4b;
+}
+.compass-pointer {
+  fill: #d63d46;
+  stroke: #8f202a;
+  stroke-width: 1;
+}
+.compass-reading-box {
+  fill: #101a2b;
+  fill-opacity: 0.88;
+  stroke: #e7c021;
+  stroke-width: 1;
+}
+.compass-reading {
+  fill: #e7c021;
+  font-size: 11px;
+  text-anchor: middle;
+}
+.hud-label {
+  color: #e7c021;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.hud-reading {
+  color: #e7c021;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}

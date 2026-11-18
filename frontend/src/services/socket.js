@@ -1,9 +1,16 @@
-import { io } from 'socket.io-client';
-import { API_TOKEN, SOCKET_URL } from '../config';
+import { io } from 'socket.io-client'
 
-export const socket = io(SOCKET_URL, {
+const serverUrl = (
+  import.meta.env.VITE_SOCKET_URL
+  || import.meta.env.VITE_API_URL
+  || import.meta.env.VITE_API_BASE_URL?.replace(/\/api\/?$/, '')
+  || 'http://127.0.0.1:5000'
+).replace(/\/$/, '')
+const token = import.meta.env.VITE_API_TOKEN || ''
+
+export const socket = io(serverUrl, {
   autoConnect: false,
-  auth: API_TOKEN ? { token: API_TOKEN } : undefined,
+  auth: token ? { token } : undefined,
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
-});
+})

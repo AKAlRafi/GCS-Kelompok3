@@ -1,0 +1,15 @@
+.app-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: #070d18;
+}
+.map-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
