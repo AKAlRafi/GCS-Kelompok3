@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import './more.css'
+import './sidebar.css'
 
 const telemetryItems = [
   ['Latitude', '—', '°'],

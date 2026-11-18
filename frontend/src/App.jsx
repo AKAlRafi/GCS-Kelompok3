@@ -3,7 +3,7 @@ import './App.css'
 import Hud from './components/hud'
 import Map from './components/map'
 import Navbar from './components/navbar'
-import More from './components/more'
+import More from './components/sidebar'
 import { socket } from './services/socket'
 
 function App() {
