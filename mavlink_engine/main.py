@@ -10,6 +10,7 @@ from .services.command_service import CommandService
 from .services.mavlink_service import MavlinkService, TELEMETRY_TYPES
 from .services.mission_service import MissionService
 from .services.redis_service import RedisService
+from .services.parameter_service import ParameterService
 from . import config
 
 logger = logging.getLogger(__name__)
@@ -91,18 +92,20 @@ class HeartbeatReporter:
             self._say(f"LOST (no heartbeat for more than {self.stale_after:.0f}s)")
 
 
-def clean(data: dict) -> dict:
+def clean(data):
     """Replace NaN/inf with None (JSON null): redis_service rejects them."""
-    return {
-        k: (None if isinstance(v, float) and not math.isfinite(v) else v)
-        for k, v in data.items()
-    }
+    if isinstance(data, dict):
+        return {k: clean(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [clean(v) for v in data]
+    return None if isinstance(data, float) and not math.isfinite(data) else data
 
 
 MISSION_COMMANDS = ("upload_mission", "download_mission", "clear_mission")
+PARAM_COMMANDS = ("download_params", "get_param", "set_param")
 
 
-def dispatch_command(payload, command_svc, mission_svc, calibration_svc=None) -> dict:
+def dispatch_command(payload, command_svc, mission_svc, calibration_svc=None, param_svc=None) -> dict:
     """Route a backend message {id, type, payload} to MissionService or CommandService."""
     if not isinstance(payload, dict):
         return {"ok": False, "error": "Command payload must be a dictionary"}
@@ -126,6 +129,17 @@ def dispatch_command(payload, command_svc, mission_svc, calibration_svc=None) ->
                 res = mission_svc.download_mission()
             else:
                 res = mission_svc.clear_mission()
+        elif name in PARAM_COMMANDS:
+            if param_svc is None:
+                res = {"ok": False, "error": "Parameters are not available"}
+            elif not getattr(config, "ENABLE_COMMANDS", False):
+                res = {"ok": False, "error": "Commands are disabled (ENABLE_COMMANDS=0)"}
+            elif name == "download_params":
+                res = param_svc.download_all_params()
+            elif name == "get_param":
+                res = param_svc.get_param(inner.get("id"))
+            else:
+                res = param_svc.set_param(inner.get("id"), inner.get("value"), inner.get("type"))
         elif name in CALIBRATION_COMMANDS:
             if calibration_svc is None:
                 res = {"ok": False, "error": "Calibration is not available"}
@@ -142,6 +156,7 @@ def process_commands(
     command_svc: CommandService,
     mission_svc: MissionService,
     calibration_svc=None,
+    param_svc=None,
 ) -> int:
     """Read pending commands from Redis without blocking and publish acks."""
     processed = 0
@@ -150,7 +165,7 @@ def process_commands(
         if cmd_data is None:
             break
         try:
-            result = dispatch_command(cmd_data, command_svc, mission_svc, calibration_svc)
+            result = dispatch_command(cmd_data, command_svc, mission_svc, calibration_svc, param_svc)
         except Exception as e:
             logger.exception(f"Command failed: {e}")
             result = {"ok": False, "error": f"Internal error: {e}"}
@@ -168,6 +183,8 @@ def run() -> None:
     command_svc = CommandService(mav)
     mission_svc = MissionService(mav)
     state = {}
+    param_svc = ParameterService(mav)
+    param_svc.armed_fn = lambda: state.get("armed")
     calibration_svc = CalibrationService(mav, publish=redis_svc.publish_event,
                                          armed_fn=lambda: state.get("armed"))
 
@@ -210,7 +227,7 @@ def run() -> None:
                         heartbeat.on_heartbeat(parsed, msg.get_srcSystem(), time.monotonic())
 
             # Check and execute pending commands from Redis
-            process_commands(redis_svc, command_svc, mission_svc, calibration_svc)
+            process_commands(redis_svc, command_svc, mission_svc, calibration_svc, param_svc)
 
             now_m = time.monotonic()
             if "home_lat" not in state and now_m - last_home_req >= HOME_REQUEST_INTERVAL:

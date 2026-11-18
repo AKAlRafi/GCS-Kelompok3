@@ -14,6 +14,7 @@ class ParameterService:
         self.mavlink = mavlink_service
         self.timeout = timeout
         self.max_retries = max_retries
+        self.armed_fn = None    # Returns True / False / None; set params refuses unless False
         self._param_types: dict[str, int] = {}
 
     def is_connected(self) -> bool:
@@ -173,6 +174,9 @@ class ParameterService:
 
         if not math.isfinite(numeric_value):
             return {"ok": False, "error": "Parameter value must be finite"}
+        
+        if self.armed_fn is not None and self.armed_fn() is not False:
+            return {"ok": False, "error": "Parameters can only be changed while disarmed."}
 
         resolved_type = (
             int(param_type)

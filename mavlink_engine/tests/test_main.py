@@ -225,3 +225,34 @@ def test_dispatch_calibration_without_service_is_rejected():
     res = dispatch_command({"id": 6, "type": "calibrate_cancel", "payload": {}}, cmd_svc, MagicMock())
     assert res["ok"] is False
     cmd_svc.execute_command.assert_not_called()
+
+
+def test_dispatch_param_commands_route_to_parameter_service(monkeypatch):
+    monkeypatch.setattr(config, "ENABLE_COMMANDS", True, raising=False)
+    p = MagicMock()
+    p.download_all_params.return_value = {"ok": True, "count": 1}
+    p.get_param.return_value = {"ok": True}
+    p.set_param.return_value = {"ok": True}
+    dispatch_command({"id": 1, "type": "download_params", "payload": {}}, MagicMock(), MagicMock(), None, p)
+    dispatch_command({"id": 2, "type": "get_param", "payload": {"id": "SERVO1_MIN"}}, MagicMock(), MagicMock(), None, p)
+    dispatch_command({"id": 3, "type": "set_param", "payload": {"id": "SERVO1_MIN", "value": 1000, "type": 9}},
+                     MagicMock(), MagicMock(), None, p)
+    p.download_all_params.assert_called_once_with()
+    p.get_param.assert_called_once_with("SERVO1_MIN")
+    p.set_param.assert_called_once_with("SERVO1_MIN", 1000, 9)
+
+
+def test_dispatch_param_without_service_or_when_disabled(monkeypatch):
+    res = dispatch_command({"id": 1, "type": "get_param", "payload": {"id": "X"}}, MagicMock(), MagicMock())
+    assert res["ok"] is False
+    monkeypatch.setattr(config, "ENABLE_COMMANDS", False, raising=False)
+    p = MagicMock()
+    res = dispatch_command({"id": 2, "type": "set_param", "payload": {"id": "X", "value": 1}},
+                           MagicMock(), MagicMock(), None, p)
+    assert res["ok"] is False
+    p.set_param.assert_not_called()
+
+
+def test_clean_handles_nested_nan():
+    data = {"parameters": [{"id": "A", "value": float("nan")}, {"id": "B", "value": 1.5}]}
+    assert clean(data) == {"parameters": [{"id": "A", "value": None}, {"id": "B", "value": 1.5}]}

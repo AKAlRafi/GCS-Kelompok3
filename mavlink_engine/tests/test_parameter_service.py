@@ -119,3 +119,18 @@ def test_set_param_validation():
     assert svc.set_param("X", float("nan"))["ok"] is False
     assert svc.set_param("", 1)["ok"] is False
     master.mav.param_set_send.assert_not_called()
+
+
+def test_set_param_refused_when_armed_or_unknown():
+    for armed in (True, None):
+        svc, _, master = make([pv("X", 5.0, 0, 1)])
+        svc.armed_fn = lambda armed=armed: armed
+        res = svc.set_param("X", 5)
+        assert res["ok"] is False and "disarmed" in res["error"]
+        master.mav.param_set_send.assert_not_called()
+
+
+def test_set_param_allowed_when_disarmed():
+    svc, _, master = make([pv("X", 5.0, 0, 1)])
+    svc.armed_fn = lambda: False
+    assert svc.set_param("X", 5)["ok"] is True
