@@ -40,12 +40,13 @@ def open_link(url: str):
 
 class MavlinkService:
     """Holds one MAVLink connection."""
-    def __init__(self):
+    def __init__(self, tlog_service=None):
         self.url = config.MAVLINK_URL
         self.conn = None    # Set by connect()
         self.vehicle = None # sysid and compid of the autopilot, set by connect()
         self.backlog = []   # Set by wait_for()
         self._last_error_time = 0.0     # For rate-limited logging
+        self.tlog = tlog_service
 
     def master(self):
         return self.conn
@@ -67,6 +68,8 @@ class MavlinkService:
             self.close()    # Release the socket
             return False
         self.vehicle = (hb.get_srcSystem(), hb.get_srcComponent())
+        if self.tlog is not None:
+            self.tlog.start()
         logger.info(
             f"Heartbeat: sysid={hb.get_srcSystem()} compid={hb.get_srcComponent()} "
             f"type={hb.type} autopilot={hb.autopilot} | "
@@ -90,6 +93,8 @@ class MavlinkService:
 
     def close(self):
         """Close the link and reset the connection."""
+        if self.tlog is not None:
+            self.tlog.stop()
         self.backlog = []
         if self.conn:
             try:
@@ -142,12 +147,16 @@ class MavlinkService:
                 if first is None:
                     return out
                 if self.from_vehicle(first):
+                    if self.tlog is not None:
+                        self.tlog.write_msg(first)
                     out.append(first)
             while len(out) < limit:
                 msg = self.conn.recv_match(type=TYPES, blocking=False)
                 if msg is None:
                     break
                 if self.from_vehicle(msg):
+                    if self.tlog is not None:
+                        self.tlog.write_msg(msg)
                     out.append(msg)
         except OSError as e:
             self.log_limited(f"MAVLink read failed: {e}")

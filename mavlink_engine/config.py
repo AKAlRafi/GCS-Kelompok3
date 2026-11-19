@@ -8,6 +8,10 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_CHANNEL = os.getenv("REDIS_CHANNEL", "telemetry")
 REDIS_CALIBRATION_CHANNEL = os.getenv("REDIS_CALIBRATION_CHANNEL", "calibration_events")
 
+# Tlogs
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "logs"))
+
 # MAVLink
 MAVLINK_URL = os.getenv("MAVLINK_URL", "udpin:0.0.0.0:14551")
 

@@ -11,6 +11,7 @@ from .services.mavlink_service import MavlinkService, TELEMETRY_TYPES
 from .services.mission_service import MissionService
 from .services.redis_service import RedisService
 from .services.parameter_service import ParameterService
+from .services.tlog_service import TlogService
 from . import config
 
 logger = logging.getLogger(__name__)
@@ -178,7 +179,8 @@ def process_commands(
 
 
 def run() -> None:
-    mav = MavlinkService()
+    tlog_svc = TlogService()
+    mav = MavlinkService(tlog_service=tlog_svc)
     redis_svc = RedisService()
     command_svc = CommandService(mav)
     mission_svc = MissionService(mav)
