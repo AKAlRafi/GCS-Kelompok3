@@ -10,9 +10,9 @@
   justify-content: space-between;
   gap: 16px;
   padding: 8px 14px;
-  color: #eef4ff;
-  background: #101a2b;
-  border: 1px solid #e7c021;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 14px;
   box-sizing: border-box;
 }
@@ -21,6 +21,7 @@
 .nav-status-item,
 .mode-display,
 .nav-controls {
+  position: relative;
   display: flex;
   align-items: center;
 }
@@ -38,7 +39,7 @@
 .brand-name {
   font-family: "Ethnocentric", sans-serif;
   font-style: italic;
-  color: #e7c021;
+  color: var(--accent);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -46,10 +47,10 @@
 .brand-divider {
   width: 1px;
   height: 21px;
-  background: #e7c021;
+  background: var(--accent);
 }
 .brand-page {
-  color: #aebbd0;
+  color: (--muted);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -93,23 +94,23 @@
   flex: 0 0 auto;
   gap: 5px;
   padding: 4px;
-  background: #101a2b;
-  border: 1px solid #e7c021;
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 11px;
 }
 .arm-state {
   padding: 0 7px;
-  color: #e7c021;
+  color: var(--accent);
 }
 .arm-state.armed {
-  color: #e7c021;
+  color: var(--accent);
 }
 .nav-button,.mode-select {
   min-height: 32px;
   padding: 0 10px;
-  color: #e7c021;
-  background: #101a2b;
-  border: 1px solid #e7c021;
+  color: var(--accent);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 7px;
   font: inherit;
   font-size: 12px;
@@ -121,12 +122,12 @@
   cursor: pointer;
 }
 .nav-button:not(:disabled):hover,.mode-select:not(:disabled):hover {
-  color: #e7c021;
+  color: var(--accent);
   background: rgb(231 192 33 / 15%);
-  border-color: #e7c021;
+  border-color: var(--accent);
 }
 .nav-button:focus-visible,.mode-select:focus-visible {
-  outline: 2px solid #e7c021;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .nav-button:active:not(:disabled) {
@@ -171,18 +172,18 @@
   min-width: 108px;
 }
 .mode-select option {
-  color: #e7c021;
-  background: #101a2b;
+  color: var(--accent);
+  background: var(--panel);
 }
 .nav-notice {
   position: absolute;
   top: calc(100% + 10px);
-  right: 20px;
+  right: 0px;
   max-width: 380px;
   padding: 10px 14px;
-  color: #e7c021;
+  color: var(--accent);
   background: #1c2a40;
-  border: 1px solid #e7c021;
+  border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
   font-size: 12px;
@@ -197,4 +198,26 @@
   clip: rect(0,0,0,0);
   white-space: nowrap;
   border: 0;
+}
+.nav-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 400px;
+  width: 320px;
+  max-height: 70vh;
+  overflow-y: auto;
+  color: #eef4ff;
+  background: #101a2b;
+  border: 1px solid #e7c021;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
+}
+.nav-dropdown[hidden] { 
+  display: none; 
+}
+.sidebar-button:not(:disabled) {
+  cursor: pointer;
+}
+.sidebar-button:disabled {
+  cursor: not-allowed;
 }

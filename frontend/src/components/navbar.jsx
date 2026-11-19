@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import Calibration from './calibration'
 import './navbar.css'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000/api').replace(/\/$/, '')
@@ -27,6 +28,7 @@ export default function Navbar() {
   const [commandsEnabled, setCommandsEnabled] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
+  const [calOpen, setCalOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -98,6 +100,19 @@ export default function Navbar() {
         </span>
       </div>
 
+      <button
+          className="nav-button"
+          type="button"
+          disabled={!connected || !commandsEnabled || armed}
+          title={armed ? 'Disarm before calibrating' : 'Sensor calibration'}
+          onClick={() => setCalOpen((open) => !open)}
+        >
+          Calibrate
+        </button>
+      <div className="nav-dropdown" hidden={!calOpen}>
+        <Calibration />
+      </div>
+
       <div className="nav-controls">
         <span className={`arm-state${armed ? ' armed' : ''}`}>{armed ? 'ARMED' : 'DISARMED'}</span>
         <button
@@ -146,8 +161,8 @@ export default function Navbar() {
           RTL
         </button>
       </div>
-
-      {notice && <div className="nav-notice" role="status">{notice}</div>}
+        {notice && <div className="nav-notice" role="status">{notice}
+      </div>}
     </header>
   )
 }
