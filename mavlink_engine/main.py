@@ -213,6 +213,12 @@ def run() -> None:
                 seen_types.add(msg.get_type())
                 if msg.get_type() in CALIBRATION_TYPES:
                     calibration_svc.on_message(msg)
+                if msg.get_type() == "MISSION_ITEM_REACHED":
+                    redis_svc.publish_event({
+                        "event": "waypoint_reached",
+                        "seq": msg.seq,
+                        "timestamp": int(time.time() * 1000),
+                    })
                 try:
                     parsed = parse_message(msg)
                 except AttributeError as e:
