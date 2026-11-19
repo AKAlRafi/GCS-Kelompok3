@@ -1,10 +1,9 @@
 import { io } from 'socket.io-client'
+import { API_BASE } from './api'
 
 const serverUrl = (
   import.meta.env.VITE_SOCKET_URL
-  || import.meta.env.VITE_API_URL
-  || import.meta.env.VITE_API_BASE_URL?.replace(/\/api\/?$/, '')
-  || 'http://127.0.0.1:5000'
+  || API_BASE.replace(/\/api\/?$/, '')
 ).replace(/\/$/, '')
 const token = import.meta.env.VITE_API_TOKEN || ''
 

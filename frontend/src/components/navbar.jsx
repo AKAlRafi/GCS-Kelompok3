@@ -1,26 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import Calibration from './calibration'
 import './navbar.css'
-
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000/api').replace(/\/$/, '')
-const API_TOKEN = import.meta.env.VITE_API_TOKEN || ''
+import { apiJson } from '../services/api'
 const MODE_OPTIONS = (import.meta.env.VITE_ALLOWED_FLIGHT_MODES || 'STABILIZE,ACRO,ALT_HOLD,AUTO,GUIDED,LOITER,RTL,FBWA,MANUAL')
   .split(',').map((mode) => mode.trim().toUpperCase()).filter((mode) => mode && mode !== 'TAKEOFF')
 
-async function requestJson(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {}),
-      ...options.headers,
-    },
-  })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`)
-  return data
-}
-
+  
 export default function Navbar() {
   const [telemetry, setTelemetry] = useState(null)
   const [serverOnline, setServerOnline] = useState(false)
@@ -33,9 +18,9 @@ export default function Navbar() {
   const refresh = useCallback(async () => {
     try {
       const [health, connection, state] = await Promise.all([
-        requestJson('/health'),
-        requestJson('/connection/status'),
-        requestJson('/telemetry'),
+        apiJson('/health'),
+        apiJson('/connection/status'),
+        apiJson('/telemetry'),
       ])
       setServerOnline(Boolean(health.ok))
       setCommandsEnabled(Boolean(health.commands_enabled))
@@ -57,7 +42,7 @@ export default function Navbar() {
     setBusy(true)
     setNotice('')
     try {
-      await requestJson('/commands', {
+      await apiJson('/commands', {
         method: 'POST',
         body: JSON.stringify({ type, payload }),
       })

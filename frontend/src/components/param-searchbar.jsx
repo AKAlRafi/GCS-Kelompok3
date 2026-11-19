@@ -61,29 +61,29 @@ export default function ParameterSearch() {
 
     return (
         <div className="param-search" ref={boxRef}>
-        <input
-            className="param-search-input"
-            type="search"
-            placeholder="Search parameters (e.g. SERVO1)"
-            value={query}
-            onFocus={handleFocus}
-            onChange={(e) => { setQuery(e.target.value); LIMIT; setOpen(true) }}
-            aria-label="Search parameters"
-        />
-        {open && q && (
-            <div className="param-search-panel">
-            <div className="param-search-meta">
-                {loading ? 'Loading…' : error ? error : `${Math.min(LIMIT, results.length)} of ${results.length}`}
-                <button type="button" onClick={load}>Reload</button>
-            </div>
-            <ul className="param-search-list">
-                {results.slice(0, LIMIT).map((p) => (
-                    <li key={p.id}><span>{p.id}</span><b>{p.value ?? '—'}</b></li>
-                ))}
-                {!loading && !error && results.length === 0 && <li className="empty">No match</li>}
-            </ul>
-            </div>
-        )}
+            <input
+                className="param-search-input"
+                type="search"
+                placeholder="Search parameters (e.g. SERVO1)"
+                value={query}
+                onFocus={handleFocus}
+                onChange={(e) => { setQuery(e.target.value); LIMIT; setOpen(true) }}
+                aria-label="Search parameters"
+            />
+            {open && q && (
+                <div className="param-search-panel">
+                <div className="param-search-meta">
+                    {loading ? 'Loading…' : error ? error : `${Math.min(LIMIT, results.length)} of ${results.length}`}
+                    <button type="button" onClick={load}>Reload</button>
+                </div>
+                <ul className="param-search-list">
+                    {results.slice(0, LIMIT).map((p) => (
+                        <li key={p.id}><span>{p.id}</span><b>{p.value ?? '—'}</b></li>
+                    ))}
+                    {!loading && !error && results.length === 0 && <li className="empty">No match</li>}
+                </ul>
+                </div>
+            )}
         </div>
     )
 }
