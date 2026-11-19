@@ -14,6 +14,9 @@ let lastTelemetryReceivedAt = 0;
 let isTelemetrySubscribed = false;
 let isAckSubscribed = false;
 let connectionPromise = null;
+let onCalibration = () => {};
+let isCalibrationSubscribed = false;
+let onWaypointReached = () => {};
 const pendingCommandAcks = new Map();
 const maxCommandsAwaitingAck = 32;
 const lastRedisErrorAt = new Map();
@@ -59,6 +62,14 @@ function setMissionProgressListener(listener) {
   onMissionProgress = typeof listener === 'function' ? listener : () => {};
 }
 
+function setCalibrationListener(listener) {
+  onCalibration = typeof listener === 'function' ? listener : () => {};
+}
+
+function setWaypointReachedListener(listener) {
+  onWaypointReached = typeof listener === 'function' ? listener : () => {};
+}
+
 function validateTelemetry(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('Telemetry harus berupa objek JSON.');
@@ -100,6 +111,15 @@ function validateTelemetry(data) {
   return validatedTelemetry;
 }
 
+function processCalibrationMessage(message) {
+  try {
+    const event = JSON.parse(message);
+    if (event && typeof event === 'object' && !Array.isArray(event)) onCalibration(event);
+  } catch (error) {
+    console.error('Event kalibrasi tidak bisa diproses:', error.message);
+  }
+}
+
 function processTelemetryMessage(message) {
   try {
     const data = validateTelemetry(JSON.parse(message));
@@ -112,6 +132,20 @@ function processTelemetryMessage(message) {
   } catch (error) {
     console.error('Data telemetry tidak bisa diproses:', error.message);
     return false;
+  }
+}
+
+function processCalibrationMessage(message) {
+  try {
+    const event = JSON.parse(message);
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return;
+    if (event.event === 'waypoint_reached') {
+      onWaypointReached(event);
+      return;
+    }
+    onCalibration(event);
+  } catch (error) {
+    console.error('Event kalibrasi tidak bisa diproses:', error.message);
   }
 }
 
@@ -143,6 +177,10 @@ async function connectTelemetry() {
     if (!isAckSubscribed) {
       await subscriberClient.subscribe(config.redisAckChannel, processAcknowledgement);
       isAckSubscribed = true;
+    }
+        if (!isCalibrationSubscribed) {
+      await subscriberClient.subscribe(config.redisCalibrationChannel, processCalibrationMessage);
+      isCalibrationSubscribed = true;
     }
   })();
   try {
@@ -253,5 +291,7 @@ module.exports = {
   stateTracker,
   sendCommand,
   resetTelemetryState,
-  closeTelemetry
+  closeTelemetry,
+  setCalibrationListener,
+  setWaypointReachedListener,
 };

@@ -1,6 +1,8 @@
 const config = require('../config');
 
-const EMPTY_PAYLOAD_COMMANDS = new Set(['arm', 'disarm', 'rtl', 'land', 'download_mission', 'clear_mission', 'start_mission', 'pause_mission', 'resume_mission']);
+const EMPTY_PAYLOAD_COMMANDS = new Set(['arm', 'disarm', 'rtl', 'land', 'download_mission', 'clear_mission', 'start_mission', 'pause_mission', 'resume_mission',
+  'download_params', 'calibrate_accept', 'calibrate_cancel'
+]);
 
 function invalidCommand(message, status = 400, code = 'INVALID_COMMAND') {
   const error = new Error(message);
@@ -114,6 +116,31 @@ function validateCommand(commandType, payload) {
     allowOnlyKeys(payload, ['speed_mps'], 'Payload change_speed');
     if (typeof payload.speed_mps !== 'number' || !Number.isFinite(payload.speed_mps) || payload.speed_mps < 0.5 || payload.speed_mps > 25) throw invalidCommand('speed_mps harus antara 0,5 dan 25 m/s.');
     return { type, payload: { speed_mps: payload.speed_mps } };
+  }
+  if (type === 'calibrate') {
+    allowOnlyKeys(payload, ['sensor'], 'Payload calibrate');
+    if (!['gyro', 'baro', 'airspeed', 'level', 'accel', 'accel_simple', 'mag'].includes(payload.sensor)) {
+      throw invalidCommand('Sensor kalibrasi tidak dikenal.');
+    }
+    return { type, payload: { sensor: payload.sensor } };
+  }
+  if (type === 'calibrate_confirm') {
+    allowOnlyKeys(payload, ['position'], 'Payload calibrate_confirm');
+    if (!Number.isInteger(payload.position) || payload.position < 1 || payload.position > 6) {
+      throw invalidCommand('position harus bilangan bulat 1 sampai 6.');
+    }
+    return { type, payload: { position: payload.position } };
+  }
+  if (type === 'get_param') {
+    allowOnlyKeys(payload, ['id'], 'Payload get_param');
+    if (typeof payload.id !== 'string' || payload.id.length === 0 || payload.id.length > 16) throw invalidCommand('id parameter tidak valid.');
+    return { type, payload: { id: payload.id } };
+  }
+  if (type === 'set_param') {
+    allowOnlyKeys(payload, ['id', 'value', 'type'], 'Payload set_param');
+    if (typeof payload.id !== 'string' || payload.id.length === 0 || payload.id.length > 16) throw invalidCommand('id parameter tidak valid.');
+    if (typeof payload.value !== 'number' || !Number.isFinite(payload.value)) throw invalidCommand('value harus angka terbatas.');
+    return { type, payload: { id: payload.id, value: payload.value, ...(payload.type !== undefined ? { type: payload.type } : {}) } };
   }
   throw invalidCommand(`Jenis perintah ${type || '(kosong)'} tidak didukung.`, 400, 'COMMAND_UNSUPPORTED');
 }

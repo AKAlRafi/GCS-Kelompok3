@@ -71,6 +71,8 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
   // WebSocket meneruskan telemetry ke frontend Fai.
   io.on('connection', (socket) => socket.emit('telemetry', telemetryService.getLatestTelemetry()));
   telemetryService.setTelemetryListener((telemetry) => io.emit('telemetry', telemetry));
+  telemetryService.setCalibrationListener((event) => io.emit('calibration', event));
+  telemetryService.setWaypointReachedListener((event) => io.emit('waypoint_reached', event));
   stateTracker.setStateListener((state) => {
     if (!activeMission) return;
     try {

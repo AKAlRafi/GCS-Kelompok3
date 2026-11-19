@@ -82,5 +82,7 @@ module.exports = {
   mavlinkUrl: process.env.MAVLINK_URL || 'udpin:0.0.0.0:14551',
   databasePath: resolveBackendPath(process.env.DB_PATH, 'data/gcs.db'),
   missionFolder,
-  logFolder: resolveBackendPath(process.env.LOG_DIR, 'data/logs')
+  logFolder: resolveBackendPath(process.env.LOG_DIR, 'data/logs'),
+  redisAckChannel: process.env.REDIS_ACK_CHANNEL || 'command_acks',
+  redisCalibrationChannel: process.env.REDIS_CALIBRATION_CHANNEL || 'calibration_events',
 };
