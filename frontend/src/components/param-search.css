@@ -1,12 +1,12 @@
 .param-search {
   position: absolute;
-  top: 125px;              /* just under the navbar */
+  top: 145px;              /* just under the navbar */
   right: 16px;
   z-index: 1001;
   width: 320px;
   max-width: calc(100vw - 32px);
   background-color: #101a2b;
-  border: 1px solid #e7c021;
+  border: 1px solid var(--border);
   border-radius: 14px;
   color: #e7c021;
   font-size: 10px;
