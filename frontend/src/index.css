@@ -18,10 +18,10 @@
 
 :root {
   --panel: #131c27;
-  --border: #2a3a4d;
-  --text: #d7dee8;
+  --border: #e7c021;
+  --text: #e7c021;
   --muted: #8a99ab;
-  --accent: #5eb5c4;
+  --accent: #e7c021;
 }
 
 html,

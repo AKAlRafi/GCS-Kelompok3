@@ -22,7 +22,7 @@
   font: inherit;
   font-size: 13px;
 }
-.param-search-input::placeholder { color: var(--muted); }
+.param-search-input::placeholder { color: #a28617; }
 .param-search-panel {
   margin-top: 6px;
   color: var(--text);
@@ -42,7 +42,7 @@
 }
 .param-search-meta button,
 .param-search-more {
-  color: var(--accent);
+  color: #e7c021;
   background: none;
   border: 0;
   font: inherit;
