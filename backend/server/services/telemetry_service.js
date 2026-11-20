@@ -111,15 +111,6 @@ function validateTelemetry(data) {
   return validatedTelemetry;
 }
 
-function processCalibrationMessage(message) {
-  try {
-    const event = JSON.parse(message);
-    if (event && typeof event === 'object' && !Array.isArray(event)) onCalibration(event);
-  } catch (error) {
-    console.error('Event kalibrasi tidak bisa diproses:', error.message);
-  }
-}
-
 function processTelemetryMessage(message) {
   try {
     const data = validateTelemetry(JSON.parse(message));
