@@ -5,6 +5,7 @@ import Map from './components/map'
 import Navbar from './components/navbar'
 import Sidebar from './components/sidebar'
 import ParameterSearch from './components/param-searchbar'
+import WaypointNotification from './components/waypoint-notif'
 import { apiJson, apiRequest } from './services/api'
 import { socket } from './services/socket'
 
@@ -223,7 +224,6 @@ function App() {
       param1: 0, param2: 0, param3: 0, param4: 0, autocontinue: 1,
     }])
     setMissionDirty(true)
-    setAddingWaypoint(false)
   }, [])
 
   const deleteWaypoint = useCallback((id) => {
@@ -395,6 +395,7 @@ function App() {
           lastTelemetryAt={lastTelemetryAt}
           onToggleFollow={() => setFollowVehicle((following) => !following)}
         />
+        <WaypointNotification/>
       </main>
     </div>
   )

@@ -31,9 +31,7 @@ export default function WaypointNotification() {
 
   return (
     <div className='wp-container'>
-      {notif.seq === 0
-        ? `Home Position (WP #0) tercapai (${notif.time})`
-        : `Waypoint ke-${notif.seq} tercapai (${notif.time})`}
+      {`Waypoint ke-${notif.seq} tercapai (${notif.time})`}
     </div>
   );
 }
