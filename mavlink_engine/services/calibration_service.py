@@ -35,11 +35,11 @@ MAG_CAL_SUCCESS = 4         # MAG_CAL_STATUS
 
 
 class CalibrationService:
-    def __init__(self, mavlink_service, publish=None, armed_fn=None, timeout: float = 3.0):
+    def __init__(self, mavlink_service, publish=None, armed_fn=None, timeout = config.COMMAND_TIMEOUT):
         self.mavlink = mavlink_service
         self.publish = publish          # publish(event: dict) -> any
         self.armed_fn = armed_fn        # returns True / False / None (unknown)
-        self.timeout = getattr(config, "COMMAND_TIMEOUT", timeout)
+        self.timeout = timeout
         self.sensor = None              # Sensor being calibrated (interactive only)
 
     # Helpers
@@ -53,7 +53,7 @@ class CalibrationService:
                 logger.error(f"Calibration event publish failed: {e}")
 
     def precheck(self):
-        if not getattr(config, "ENABLE_COMMANDS", False):
+        if not config.ENABLE_COMMANDS:
             return {"ok": False, "error": "Commands are disabled (ENABLE_COMMANDS=0)"}
         if self.mavlink is None or self.mavlink.master() is None:
             return {"ok": False, "error": "MAVLink not connected"}

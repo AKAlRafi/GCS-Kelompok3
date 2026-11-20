@@ -23,10 +23,10 @@ COMMAND_RESULT_NAMES = {
 
 
 class CommandService:
-    def __init__(self, mavlink_service, timeout: float = 3.0):
+    def __init__(self, mavlink_service, timeout = config.COMMAND_TIMEOUT):
         self.mavlink = mavlink_service
-        self.timeout = getattr(config, "COMMAND_TIMEOUT", timeout)
-        self.enabled = getattr(config, "ENABLE_COMMANDS", False)
+        self.timeout = timeout
+        self.enabled = config.ENABLE_COMMANDS
 
     def is_connected(self) -> bool:
         """Check whether the MAVLink master connection is active."""
@@ -58,7 +58,7 @@ class CommandService:
                 return False, "Parameter 'force' must be a boolean", cmd, params
             if "arm" in params and not isinstance(params["arm"], bool):
                 return False, "Parameter 'arm' must be a boolean", cmd, params
-            if params.get("force") and not getattr(config, "ALLOW_FORCE_ARM", False):
+            if params.get("force") and not config.ALLOW_FORCE_ARM:
                 return False, "Force arm/disarm is disabled", cmd, params
         elif cmd in ("set_mode", "mode"):
             mode_val = params.get("mode")
@@ -70,7 +70,7 @@ class CommandService:
             v = params.get(key)
             return isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
 
-        max_alt = getattr(config, "MAX_ALTITUDE", 500)
+        max_alt = config.MAX_ALTITUDE
         # Plane climbs to TKOFF_ALT on the FC, so altitude_m is optional (checked if given)
         if cmd == "takeoff" and "altitude_m" in params and not _num("altitude_m", 1, max_alt):
             return False, "altitude_m out of range", cmd, params
