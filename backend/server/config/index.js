@@ -22,6 +22,7 @@ const criticalBatteryPercent = Number(process.env.CRITICAL_BATTERY_PERCENT || 20
 const maxMissionDistanceFromHome = Number(process.env.MAX_MISSION_DISTANCE_METERS || 5000);
 const heartbeatStaleMs = Number(process.env.HEARTBEAT_STALE_MS || 3000);
 const missionFolder = resolveBackendPath(process.env.MISSION_DIR, 'data/missions');
+const tlogFolder = resolveBackendPath(process.env.TLOG_DIR, 'logs');
 
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
   throw new Error('PORT harus berupa angka antara 0 dan 65535.');
@@ -82,6 +83,7 @@ module.exports = {
   mavlinkUrl: process.env.MAVLINK_URL || 'udpin:0.0.0.0:14551',
   databasePath: resolveBackendPath(process.env.DB_PATH, 'data/gcs.db'),
   missionFolder,
+  tlogFolder,
   logFolder: resolveBackendPath(process.env.LOG_DIR, 'data/logs'),
   redisAckChannel: process.env.REDIS_ACK_CHANNEL || 'command_acks',
   redisCalibrationChannel: process.env.REDIS_CALIBRATION_CHANNEL || 'calibration_events',

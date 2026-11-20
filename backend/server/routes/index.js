@@ -2,6 +2,7 @@ const express = require('express');
 const telemetry = require('../controllers/telemetry_controller');
 const parameters = require('../controllers/parameter_controller');
 const flightLogs = require('../controllers/flight_log_controller');
+const tlogs = require('../controllers/tlog_controller');
 const commands = require('../controllers/command_controller');
 const missions = require('../controllers/mission_controller');
 const maneuvers = require('../controllers/maneuver_controller');
@@ -32,5 +33,7 @@ router.post('/logs/start', flightLogs.start);
 router.post('/logs/stop', flightLogs.stop);
 router.get('/logs/:id/download', flightLogs.download);
 router.get('/logs/:id/telemetry', flightLogs.telemetry);
+router.get('/tlogs', tlogs.list);
+router.get('/tlogs/:fileName/replay', tlogs.replay);
 
 module.exports = router;

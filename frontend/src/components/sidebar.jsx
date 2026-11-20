@@ -33,6 +33,11 @@ function displayValue(value, digits = 2) {
   return Number(value).toFixed(digits)
 }
 
+function formatLogTime(milliseconds) {
+  const seconds = Math.floor(Math.max(0, milliseconds) / 1000)
+  return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`
+}
+
 function PlaceholderButton({ children, primary = false, danger = false, disabled = false, onClick, pressed }) {
   return (
     <button
@@ -50,10 +55,13 @@ function PlaceholderButton({ children, primary = false, danger = false, disabled
 function MissionSidebar({
   waypoints, missions, missionName, selectedMissionId, missionProgress, navigationGuidance,
   flightLogs, activeLog, busyAction, message, addingWaypoint, homeVisible, routeVisible, trailVisible,
+  tlogFiles = [], selectedTlog = '', replayActive = false, replayPlaying = false,
+  replayPosition = 0, replayDuration = 0, replaySpeed = 1, replayMessage = '',
   missionPaused, onAddWaypointMode, onUpdateWaypoint, onDeleteWaypoint, onMissionNameChange,
   onLoadMission, onSaveMission, onUploadMission, onStartMission, onPauseMission, onResumeMission,
   onClearDroneMission, onDeleteMission, onDownloadMission, onResetMap, onImportMission,
   onToggleHome, onToggleRoute, onToggleTrail, onStartLog, onStopLog, onDownloadLog, onRefreshLogs,
+  onSelectTlog, onLoadTlog, onToggleTlogPlayback, onStopTlogReplay, onSeekTlogReplay, onTlogSpeedChange,
 }) {
   const fileInput = useRef(null)
   const active = missionProgress && !['COMPLETED', 'IDLE', 'FAILED'].includes(missionProgress.stage)
@@ -157,6 +165,44 @@ function MissionSidebar({
             <button type="button" className="sidebar-refresh" title="Download this flight log" onClick={() => onDownloadLog(log.id)}>↓</button>
           </div>
         ))}
+      </section>
+
+      <section className="sidebar-section tlog-replay-section">
+        <h3>TLOG Replay</h3>
+        <label className="sidebar-label" htmlFor="tlog-file">Recorded MAVLink logs</label>
+        <select id="tlog-file" className="sidebar-input" value={selectedTlog} onChange={(event) => onSelectTlog(event.target.value)}>
+          <option value="">Select a TLOG file</option>
+          {tlogFiles.map((file) => (
+            <option key={file.file_name} value={file.file_name}>
+              {file.file_name} · {(file.size / 1024 / 1024).toFixed(1)} MB
+            </option>
+          ))}
+        </select>
+        <div className="tlog-controls">
+          <PlaceholderButton disabled={!selectedTlog || busyAction !== ''} onClick={() => onLoadTlog(selectedTlog)}>Load TLOG</PlaceholderButton>
+          <PlaceholderButton primary disabled={!replayActive} onClick={onToggleTlogPlayback}>
+            {replayPlaying ? 'Pause' : 'Play'}
+          </PlaceholderButton>
+          <PlaceholderButton disabled={!replayActive} onClick={onStopTlogReplay}>Stop</PlaceholderButton>
+          <select id="tlog-speed" className="sidebar-input tlog-speed-select" aria-label="Playback speed" title="Playback speed" value={replaySpeed} onChange={(event) => onTlogSpeedChange(event.target.value)}>
+            {[0.5, 1, 2, 4].map((speed) => <option key={speed} value={speed}>{speed}×</option>)}
+          </select>
+        </div>
+        <div className="tlog-timeline">
+          <input
+            aria-label="TLOG playback position"
+            type="range"
+            min="0"
+            max={Math.max(1, replayDuration)}
+            step="100"
+            value={Math.min(replayPosition, replayDuration)}
+            disabled={!replayActive}
+            onChange={(event) => onSeekTlogReplay(event.target.value)}
+          />
+          <span>{formatLogTime(replayPosition)} / {formatLogTime(replayDuration)}</span>
+        </div>
+        {replayMessage && <span className="sidebar-note tlog-message" role="status">{replayMessage}</span>}
+        {replayActive && <span className="sidebar-note">Replay only moves the map and HUD. Flight controls still use live telemetry.</span>}
       </section>
 
       {message && <div className="sidebar-message" role="status">{message}</div>}

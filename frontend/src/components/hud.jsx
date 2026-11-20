@@ -33,7 +33,7 @@ export default function Hud({ telemetry = {}, mapBearing = 0, followVehicle = fa
   const heading = Number(telemetry.heading ?? telemetry.yaw)
   const hasHeading = Number.isFinite(heading)
   const compassBearing = hasHeading ? ((heading % 360) + 360) % 360 : 0
-  const horizonRoll = Number.isFinite(roll) ? -roll : 0
+  const horizonRoll = Number.isFinite(roll) ? roll : 0
   const horizonPitch = Number.isFinite(pitch) ? Math.max(-30, Math.min(30, pitch * 1.5)) : 0
 
   return (

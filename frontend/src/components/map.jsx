@@ -147,8 +147,8 @@ export default function Map({
       <RotateMap enabled={followVehicle} bearing={mapBearing} />
       <MapClickHandler enabled={addingWaypoint} onMapClick={onMapClick} />
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-      {showTrail && trailPositions.length > 1 && <Polyline positions={trailPositions} pathOptions={{ color: '#e7c021', weight: 3, opacity: 0.6, dashArray: '6 7' }} />}
-      {showRoute && routePositions.length > 1 && <Polyline positions={routePositions} pathOptions={{ color: '#e7c021', weight: 4, opacity: 0.95 }} />}
+      {showTrail && trailPositions.length > 1 && <Polyline positions={trailPositions} pathOptions={{ color: 'var(--panel)', weight: 3, opacity: 0.6, dashArray: '6 7' }} />}
+      {showRoute && routePositions.length > 1 && <Polyline positions={routePositions} pathOptions={{ color: 'var(--panel)', weight: 4, opacity: 0.95 }} />}
       {showHome && homePosition && <Marker position={homePosition} icon={makePointIcon('H', 'home')} />}
       {waypoints.map((point, index) => {
         const pointPosition = toPosition(point)

@@ -26,6 +26,7 @@ if ($ConnectionMode -notin @('SITL', 'USB')) {
 }
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$backendBase = Join-Path $projectRoot 'backend'
 $backendRoot = Join-Path $projectRoot 'backend\server'
 $engineRoot = Join-Path $projectRoot 'backend\mavlink_engine'
 $enginePython = Join-Path $engineRoot '.venv\Scripts\python.exe'
@@ -200,7 +201,7 @@ $env:REDIS_PORT = '6379'
 $env:REDIS_CHANNEL = 'telemetry'
 $env:REDIS_COMMAND_CHANNEL = 'commands'
 $env:REDIS_ACK_CHANNEL = 'command_acks'
-Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoExit', '-Command', "& '.\.venv\Scripts\python.exe' -m mavlink_engine.main") -WorkingDirectory $engineRoot -WindowStyle Normal
+Start-Process -FilePath $enginePython -ArgumentList @('-m', 'mavlink_engine.main') -WorkingDirectory $backendBase -WindowStyle Normal
 
 Write-Host "Redis, backend, dan MAVLink engine dijalankan. Koneksi: $mavlinkUrl"
 if ($ConnectionMode -eq 'SITL') {

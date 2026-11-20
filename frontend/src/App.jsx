@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import Hud from './components/hud'
 import Map from './components/map'
@@ -8,6 +8,22 @@ import ParameterSearch from './components/param-searchbar'
 import WaypointNotification from './components/waypoint-notif'
 import { apiJson, apiRequest } from './services/api'
 import { socket } from './services/socket'
+
+function findSampleIndex(samples, time) {
+  let low = 0
+  let high = samples.length - 1
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2)
+    if (samples[middle].t <= time) low = middle
+    else high = middle - 1
+  }
+  return low
+}
+
+function formatReplayTime(milliseconds) {
+  const seconds = Math.floor(Math.max(0, milliseconds) / 1000)
+  return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`
+}
 
 function App() {
   const [telemetry, setTelemetry] = useState({})
@@ -24,6 +40,17 @@ function App() {
   const [navigationGuidance, setNavigationGuidance] = useState(null)
   const [missionPaused, setMissionPaused] = useState(false)
   const [flightLogs, setFlightLogs] = useState([])
+  const [tlogFiles, setTlogFiles] = useState([])
+  const [selectedTlog, setSelectedTlog] = useState('')
+  const [replayFileName, setReplayFileName] = useState('')
+  const [replaySamples, setReplaySamples] = useState([])
+  const [replayDuration, setReplayDuration] = useState(0)
+  const [replayPosition, setReplayPosition] = useState(0)
+  const [replayPlaying, setReplayPlaying] = useState(false)
+  const [replaySpeed, setReplaySpeed] = useState(1)
+  const [replayMessage, setReplayMessage] = useState('')
+  const [replaySeekVersion, setReplaySeekVersion] = useState(0)
+  const replayPositionRef = useRef(0)
   const [activeLog, setActiveLog] = useState({ active: false, id: null })
   const [serverOnline, setServerOnline] = useState(false)
   const [vehicleConnected, setVehicleConnected] = useState(false)
@@ -65,6 +92,70 @@ function App() {
     setFlightLogs(Array.isArray(logs) ? logs : [])
     setActiveLog(status || { active: false, id: null })
   }, [])
+
+  const loadTlogFiles = useCallback(async () => {
+    const data = await apiJson('/tlogs')
+    setTlogFiles(data.tlogs || [])
+  }, [])
+
+  const loadTlogReplay = useCallback(async (fileName) => {
+    if (!fileName) throw new Error('Pilih file TLOG dulu.')
+    setReplayPlaying(false)
+    setReplayMessage('Loading TLOG…')
+    try {
+      const data = await apiJson(`/tlogs/${encodeURIComponent(fileName)}/replay`)
+      setSelectedTlog(fileName)
+      setReplayFileName(fileName)
+      setReplaySamples(data.samples || [])
+      setReplayDuration(data.duration_ms || 0)
+      replayPositionRef.current = 0
+      setReplayPosition(0)
+      setReplayMessage(data.samples?.length ? '' : 'TLOG tidak berisi posisi drone.')
+    } catch (error) {
+      setReplaySamples([])
+      setReplayDuration(0)
+      setReplayMessage(error.message || 'TLOG gagal dibuka.')
+      throw error
+    }
+  }, [])
+
+  const stopTlogReplay = useCallback(() => {
+    setReplayPlaying(false)
+    setReplaySamples([])
+    setReplayDuration(0)
+    setReplayFileName('')
+    setReplayMessage('')
+    replayPositionRef.current = 0
+    setReplayPosition(0)
+  }, [])
+
+  const seekTlogReplay = useCallback((value) => {
+    const position = Number(value)
+    replayPositionRef.current = position
+    setReplayPosition(position)
+    setReplaySeekVersion((version) => version + 1)
+  }, [])
+
+  const toggleTlogReplay = useCallback(() => {
+    if (replayPositionRef.current >= replayDuration) {
+      replayPositionRef.current = 0
+      setReplayPosition(0)
+    }
+    setReplayPlaying((playing) => !playing)
+  }, [replayDuration])
+
+  useEffect(() => {
+    if (!replayPlaying || replaySamples.length === 0) return undefined
+    const startPosition = replayPositionRef.current
+    const startedAt = performance.now()
+    const timer = window.setInterval(() => {
+      const nextPosition = Math.min(replayDuration, startPosition + (performance.now() - startedAt) * replaySpeed)
+      replayPositionRef.current = nextPosition
+      setReplayPosition(nextPosition)
+      if (nextPosition >= replayDuration) setReplayPlaying(false)
+    }, 100)
+    return () => window.clearInterval(timer)
+  }, [replayPlaying, replaySamples.length, replayDuration, replaySpeed, replaySeekVersion])
 
   const loadMission = useCallback(async (id) => {
     if (!id) return
@@ -305,18 +396,26 @@ function App() {
     const initialLoad = window.setTimeout(() => {
       void loadMissions().catch((error) => setSidebarMessage(error.message))
       void loadFlightLogs().catch(() => {})
+      void loadTlogFiles().catch(() => {})
     }, 0)
     const timer = window.setInterval(() => {
       void loadMissions().catch(() => {})
       void loadFlightLogs().catch(() => {})
+      void loadTlogFiles().catch(() => {})
     }, 10000)
     return () => {
       window.clearTimeout(initialLoad)
       window.clearInterval(timer)
     }
-  }, [loadFlightLogs, loadMissions])
+  }, [loadFlightLogs, loadMissions, loadTlogFiles])
 
-  const rawHeading = telemetry.heading ?? telemetry.yaw
+  const replayActive = replaySamples.length > 0
+  const replayIndex = replayActive ? findSampleIndex(replaySamples, replayPosition) : -1
+  const displayTelemetry = replayActive ? replaySamples[replayIndex] : telemetry
+  const displayTrail = replayActive
+    ? replaySamples.slice(Math.max(0, replayIndex - 499), replayIndex + 1)
+    : flightTrail
+  const rawHeading = displayTelemetry.heading ?? displayTelemetry.yaw
   const heading = Number(rawHeading)
   const mapBearing = followVehicle && rawHeading != null && Number.isFinite(heading)
     ? ((360 - (heading % 360)) % 360)
@@ -334,6 +433,14 @@ function App() {
         navigationGuidance={navigationGuidance}
         activeLog={activeLog}
         flightLogs={flightLogs}
+        tlogFiles={tlogFiles}
+        selectedTlog={selectedTlog}
+        replayActive={replayActive}
+        replayPlaying={replayPlaying}
+        replayPosition={replayPosition}
+        replayDuration={replayDuration}
+        replaySpeed={replaySpeed}
+        replayMessage={replayMessage}
         telemetry={telemetry}
         serverOnline={serverOnline}
         vehicleConnected={vehicleConnected}
@@ -368,19 +475,25 @@ function App() {
         onStartLog={() => runAction('Start flight log', startFlightLog)}
         onStopLog={() => runAction('Stop flight log', stopFlightLog)}
         onDownloadLog={(id) => runAction('Download flight log', () => downloadFlightLog(id))}
-        onRefreshLogs={() => runAction('Refresh flight logs', loadFlightLogs)}
+        onRefreshLogs={() => runAction('Refresh flight logs', async () => { await Promise.all([loadFlightLogs(), loadTlogFiles()]) })}
+        onSelectTlog={setSelectedTlog}
+        onLoadTlog={(fileName) => runAction('Load TLOG replay', () => loadTlogReplay(fileName))}
+        onToggleTlogPlayback={toggleTlogReplay}
+        onStopTlogReplay={stopTlogReplay}
+        onSeekTlogReplay={seekTlogReplay}
+        onTlogSpeedChange={(speed) => setReplaySpeed(Number(speed))}
       />
       <ParameterSearch />
       <main className="map-stage" id="main-map" aria-label="Flight map">
         <Map
-          position={{ lat: telemetry.lat, lon: telemetry.lon }}
+          position={{ lat: displayTelemetry.lat, lon: displayTelemetry.lon }}
           heading={rawHeading}
           followVehicle={followVehicle}
           mapBearing={mapBearing}
           addingWaypoint={addingWaypoint}
           waypoints={waypoints}
-          home={{ lat: telemetry.home_lat, lon: telemetry.home_lon }}
-          flightTrail={flightTrail}
+          home={{ lat: displayTelemetry.home_lat, lon: displayTelemetry.home_lon }}
+          flightTrail={displayTrail}
           showHome={homeVisible}
           showRoute={routeVisible}
           showTrail={trailVisible}
@@ -388,13 +501,14 @@ function App() {
           onMapClick={addWaypoint}
         />
         <Hud
-          telemetry={telemetry}
+          telemetry={displayTelemetry}
           mapBearing={mapBearing}
           followVehicle={followVehicle}
           socketConnected={socketConnected}
           lastTelemetryAt={lastTelemetryAt}
           onToggleFollow={() => setFollowVehicle((following) => !following)}
         />
+        {replayActive && <div className="tlog-replay-indicator">TLOG REPLAY · {replayFileName}</div>}
         <WaypointNotification/>
       </main>
     </div>

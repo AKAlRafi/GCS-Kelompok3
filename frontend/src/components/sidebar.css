@@ -299,6 +299,30 @@
   color: #91a1ba;
   font-size: 8px;
 }
+.tlog-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.tlog-speed-select {
+  min-height: 30px;
+}
+.tlog-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #e7c021;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.tlog-timeline input {
+  width: 100%;
+  margin: 3px 0;
+  accent-color: #e7c021;
+}
+.tlog-message {
+  color: #ffb86b;
+}
 .telemetry-state {
   color: #ffd36b;
   font-size: 9px;
