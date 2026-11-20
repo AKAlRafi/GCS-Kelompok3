@@ -31,10 +31,9 @@ STALE_AFTER = {"HEARTBEAT": 5.0, "SYS_STATUS": 5.0, "GPS_RAW_INT": 5.0, "SCALED_
 HOME_REQUEST_INTERVAL = 5.0
 # Messages not in the FC's default stream: message type -> (message id, interval in microseconds).
 # Requested again every HOME_REQUEST_INTERVAL until the first one arrives (until then the request may be lost).
-STREAM_REQUESTS = {"SCALED_IMU": (26, 100000), "RC_CHANNELS": (65, 500000)}
 PARSE_ERROR_LOG_INTERVAL = 5.0   # Avoid log spam
 MAX_COMMANDS_PER_TICK = 10       # Cap command processing per loop iteration
-STREAM_REQUESTS = {"SCALED_IMU": (26, 100000), "RC_CHANNELS": (65, 500000), "SERVO_OUTPUT_RAW": (36, 200000)}   # For servo
+STREAM_REQUESTS = {"SCALED_IMU": (26, 100000), "RC_CHANNELS": (65, 500000), "SERVO_OUTPUT_RAW": (36, 200000)}   # For servo and IMU
 
 
 def serial_ports_hint() -> str:

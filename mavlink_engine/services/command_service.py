@@ -1,6 +1,4 @@
-"""MAVLink command service for ArduPlane (fixed wing).
-
-The multirotor version is kept in command_service_copter.py."""
+"""MAVLink command service for ArduPlane."""
 
 import logging
 import time
