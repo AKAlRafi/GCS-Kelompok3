@@ -29,7 +29,7 @@ class TlogService:
             return self.current_path
 
     def write_msg(self, msg) -> None:
-        if msg is None:
+        if msg is None or msg.get_type() == "BAD_DATA":
             return
         raw_bytes = msg.get_msgbuf()
         if not raw_bytes:
@@ -42,6 +42,7 @@ class TlogService:
             if self._file is not None and not self._file.closed:
                 self._file.write(header)
                 self._file.write(raw_bytes)
+                self._file.flush()
 
     def stop(self) -> None:
         with self._lock:
