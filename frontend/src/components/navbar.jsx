@@ -15,6 +15,20 @@ export default function Navbar() {
   const [notice, setNotice] = useState('')
   const [calOpen, setCalOpen] = useState(false)
 
+  useEffect(() => {
+    if (!calOpen) return
+    const onKey = (event) => { if (event.key === 'Escape') setCalOpen(false) }
+    const onDown = (event) => {
+      if (!event.target.closest('.nav-dropdown, [data-cal-toggle]')) setCalOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [calOpen])
+
   const refresh = useCallback(async () => {
     try {
       const [health, connection, state] = await Promise.all([
@@ -86,6 +100,7 @@ export default function Navbar() {
       </div>
 
       <button
+          data-cal-toggle
           className="nav-button"
           type="button"
           disabled={!connected || !commandsEnabled || armed}

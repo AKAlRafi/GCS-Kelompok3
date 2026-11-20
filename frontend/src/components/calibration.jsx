@@ -92,7 +92,7 @@ export default function Calibration() {
             <button
                 className="sidebar-button danger cursor-pointer"
                 type="button"
-                disabled={busy}
+                disabled={busy || !state.running}
                 onClick={cancel}
             >
                 Cancel
