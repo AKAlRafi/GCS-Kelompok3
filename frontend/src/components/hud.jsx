@@ -61,7 +61,7 @@ export default function Hud({ telemetry = {}, mapBearing = 0, followVehicle = fa
           </defs>
           <circle className="gauge-face" cx="80" cy="80" r="77" />
           <g clipPath="url(#attitude-clip)">
-            <g transform={`rotate(${(360 - compassBearing) % 360} 80 80)`}>
+            <g transform={`rotate(${horizonRoll} 80 80) translate(0 ${horizonPitch})`}>
               <rect className="attitude-sky" x="-100" y="-300" width="360" height="380" />
               <rect className="attitude-ground" x="-100" y="80" width="360" height="400" />
               <line className="attitude-horizon" x1="-100" y1="80" x2="260" y2="80" />
@@ -90,7 +90,7 @@ export default function Hud({ telemetry = {}, mapBearing = 0, followVehicle = fa
         <div className="hud-instrument">
           <svg className="compass-gauge" viewBox="0 0 160 160" role="img" aria-label={`Map compass ${angleLabel(compassBearing)} ${directionLabel(compassBearing)}`}>
           <circle className="gauge-face compass-face" cx="80" cy="80" r="77" />
-          <g transform={`rotate(${compassBearing} 80 80)`}>
+          <g transform={`rotate(${(360 - compassBearing) % 360} 80 80)`}>
             {compassMarks}
             <text className="compass-cardinal north" x="80" y="38">N</text>
             <text className="compass-cardinal" x="122" y="84">E</text>
