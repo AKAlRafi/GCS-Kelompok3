@@ -6,6 +6,7 @@ import Navbar from './components/navbar'
 import Sidebar from './components/sidebar'
 import ParameterSearch from './components/param-searchbar'
 import WaypointNotification from './components/waypoint-notif'
+import DistanceToWaypoint from './components/distance-to-waypoints'
 import { apiJson, apiRequest } from './services/api'
 import { socket } from './services/socket'
 
@@ -510,6 +511,7 @@ function App() {
         />
         {replayActive && <div className="tlog-replay-indicator">TLOG REPLAY · {replayFileName}</div>}
         <WaypointNotification/>
+        <DistanceToWaypoint waypoints={waypoints}/>
       </main>
     </div>
   )
