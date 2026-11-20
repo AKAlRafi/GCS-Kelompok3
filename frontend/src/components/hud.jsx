@@ -30,10 +30,11 @@ function directionLabel(value) {
 export default function Hud({ telemetry = {}, mapBearing = 0, followVehicle = false, onToggleFollow }) {
   const roll = Number(telemetry.roll)
   const pitch = Number(telemetry.pitch)
-  const bearing = Number(mapBearing)
+  const heading = Number(telemetry.heading ?? telemetry.yaw)
+  const hasHeading = Number.isFinite(heading)
+  const compassBearing = hasHeading ? ((heading % 360) + 360) % 360 : 0
   const horizonRoll = Number.isFinite(roll) ? -roll : 0
   const horizonPitch = Number.isFinite(pitch) ? Math.max(-30, Math.min(30, pitch * 1.5)) : 0
-  const compassBearing = Number.isFinite(bearing) ? bearing : 0
 
   return (
     <section className="hud-panel" aria-label="Flight instruments">
@@ -60,7 +61,7 @@ export default function Hud({ telemetry = {}, mapBearing = 0, followVehicle = fa
           </defs>
           <circle className="gauge-face" cx="80" cy="80" r="77" />
           <g clipPath="url(#attitude-clip)">
-            <g transform={`rotate(${-horizonRoll} 80 80) translate(0 ${horizonPitch})`}>
+            <g transform={`rotate(${(360 - compassBearing) % 360} 80 80)`}>
               <rect className="attitude-sky" x="-100" y="-300" width="360" height="380" />
               <rect className="attitude-ground" x="-100" y="80" width="360" height="400" />
               <line className="attitude-horizon" x1="-100" y1="80" x2="260" y2="80" />
@@ -98,7 +99,7 @@ export default function Hud({ telemetry = {}, mapBearing = 0, followVehicle = fa
           </g>
           <path className="compass-pointer" d="M80 5l-8 18h16z" />
           <rect className="compass-reading-box" x="56" y="68" width="48" height="25" rx="2" />
-          <text className="compass-reading" x="80" y="86">{Number.isFinite(bearing) ? Math.round(compassBearing).toString().padStart(3, '0') : '---'}</text>
+          <text className="compass-reading" x="80" y="86">{hasHeading ? Math.round(compassBearing).toString().padStart(3, '0') : '---'}</text>
           </svg>
           <span className="hud-label">COMPASS</span>
           <span className="hud-reading">{angleLabel(compassBearing)} {directionLabel(compassBearing)}</span>
