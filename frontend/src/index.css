@@ -15,6 +15,15 @@
 * {
   box-sizing: border-box;
 }
+
+:root {
+  --panel: #131c27;
+  --border: #2a3a4d;
+  --text: #d7dee8;
+  --muted: #8a99ab;
+  --accent: #5eb5c4;
+}
+
 html,
 body,
 #root {
