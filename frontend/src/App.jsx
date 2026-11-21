@@ -313,13 +313,13 @@ function App() {
 
   const startFlightLog = useCallback(async () => {
     await apiJson('/logs/start', { method: 'POST', body: JSON.stringify({ name: 'flight' }) })
-    await loadFlightLogs()
-  }, [loadFlightLogs])
+    await Promise.all([loadFlightLogs(), loadTlogFiles()])
+  }, [loadFlightLogs, loadTlogFiles])
 
   const stopFlightLog = useCallback(async () => {
     await apiJson('/logs/stop', { method: 'POST' })
-    await loadFlightLogs()
-  }, [loadFlightLogs])
+    await Promise.all([loadFlightLogs(), loadTlogFiles()])
+  }, [loadFlightLogs, loadTlogFiles])
 
   const downloadFlightLog = useCallback(async (id) => {
     const response = await apiRequest(`/logs/${id}/download`)

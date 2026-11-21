@@ -80,6 +80,7 @@ module.exports = {
   redisChannel: process.env.REDIS_CHANNEL || 'telemetry',
   redisCommandChannel: process.env.REDIS_COMMAND_CHANNEL || 'commands',
   redisAckChannel: process.env.REDIS_ACK_CHANNEL || 'command_acks',
+  redisRecordingChannel: process.env.REDIS_RECORDING_CHANNEL || 'recording_control',
   mavlinkUrl: process.env.MAVLINK_URL || 'udpin:0.0.0.0:14551',
   databasePath: resolveBackendPath(process.env.DB_PATH, 'data/gcs.db'),
   missionFolder,

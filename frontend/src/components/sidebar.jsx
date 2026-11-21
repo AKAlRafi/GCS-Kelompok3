@@ -133,7 +133,7 @@ function MissionSidebar({
         <h3>Mission Progress</h3>
         <div className="sidebar-status-list">
           <span>Stage <b>{missionProgress?.stage || '—'}</b></span>
-          <span>Active waypoint <b>{missionProgress?.active_waypoint == null ? '—' : Number(missionProgress.active_waypoint) + 2}</b></span>
+          <span>Active waypoint <b>{missionProgress?.active_waypoint == null ? '—' : Number(missionProgress.active_waypoint) + 1}</b></span>
           <span>Distance to next <b>{displayValue(navigationGuidance?.distance_m, 1)} m</b></span>
           <span>Bearing to next <b>{displayValue(navigationGuidance?.bearing_deg, 1)}°</b></span>
         </div>

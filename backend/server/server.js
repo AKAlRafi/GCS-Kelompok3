@@ -74,7 +74,56 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
   io.on('connection', (socket) => socket.emit('telemetry', telemetryService.getLatestTelemetry()));
   telemetryService.setTelemetryListener((telemetry) => io.emit('telemetry', telemetry));
   telemetryService.setCalibrationListener((event) => io.emit('calibration', event));
-  telemetryService.setWaypointReachedListener((event) => io.emit('waypoint_reached', event));
+  telemetryService.setWaypointReachedListener((event) => {
+    io.emit('waypoint_reached', event);
+    if (!activeMission) return;
+
+    const sequence = Number(event?.seq);
+    if (!Number.isInteger(sequence) || sequence < 1) return;
+
+    try {
+      const mission = missionService.readMission(activeMission);
+      // ArduPilot reserves sequence 0 for Home, so mission waypoint 0 is seq 1.
+      const reachedIndex = sequence - 1;
+      if (reachedIndex < activeWaypointIndex || reachedIndex >= mission.waypoints.length) return;
+
+      activeWaypointIndex = reachedIndex + 1;
+      waypointReachedAt = null;
+      if (activeWaypointIndex >= mission.waypoints.length) {
+        io.emit('mission_progress', { mission_id: activeMission, stage: 'COMPLETED', active_waypoint: null,
+          waypoint_count: mission.waypoints.length });
+        io.emit('navigation_guidance', { mission_id: activeMission, waypoint: null, distance_m: null, bearing_deg: null });
+        activeMission = null;
+        return;
+      }
+
+      const state = stateTracker.getState();
+      const waypoint = mission.waypoints[activeWaypointIndex];
+      const target = waypoint.command === 20
+        ? { lat: state.home_lat, lon: state.home_lon, alt: 0 }
+        : waypoint;
+      const coordinates = [state.lat, state.lon, target.lat, target.lon].map(Number);
+      if ([state.lat, state.lon, target.lat, target.lon].every((value) => value != null)
+        && coordinates.every(Number.isFinite)) {
+        const distance = navigation.hitungJarakMeter(...coordinates);
+        const bearing = navigation.hitungArahBearing(...coordinates);
+        const turn = state.heading != null && Number.isFinite(Number(state.heading))
+          ? navigation.hitungSudutBelok(Number(state.heading), bearing)
+          : null;
+        io.emit('navigation_guidance', { mission_id: activeMission, waypoint: activeWaypointIndex,
+          distance_m: Number(distance.toFixed(2)), bearing_deg: Number(bearing.toFixed(2)),
+          altitude_error_meter: Number.isFinite(Number(state.rel_alt)) ? target.alt - Number(state.rel_alt) : null,
+          turn });
+      } else {
+        io.emit('navigation_guidance', { mission_id: activeMission, waypoint: activeWaypointIndex,
+          distance_m: null, bearing_deg: null });
+      }
+      io.emit('mission_progress', { mission_id: activeMission, stage: 'NAVIGATING_WAYPOINT',
+        active_waypoint: activeWaypointIndex, waypoint_count: mission.waypoints.length });
+    } catch (error) {
+      console.error('Gagal memperbarui waypoint aktif:', error.message);
+    }
+  });
   stateTracker.setStateListener((state) => {
     if (!activeMission) return;
     try {

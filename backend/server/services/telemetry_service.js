@@ -187,6 +187,14 @@ async function sendCommand(type, payload = {}) {
     error.code = 'COMMANDS_DISABLED';
     throw error;
   }
+  return sendEngineRequest(config.redisCommandChannel, type, payload);
+}
+
+async function sendRecordingCommand(type) {
+  return sendEngineRequest(config.redisRecordingChannel, type);
+}
+
+function sendEngineRequest(channel, type, payload = {}) {
   if (!publisherClient.isReady || !isAckSubscribed) {
     const error = new Error('Koneksi Redis untuk perintah belum siap.');
     error.code = 'REDIS_UNAVAILABLE';
@@ -210,7 +218,7 @@ async function sendCommand(type, payload = {}) {
     }, config.commandTimeoutMs);
     pendingCommandAcks.set(id, { resolve, reject, timeout });
 
-    publisherClient.publish(config.redisCommandChannel, message).then((subscriberCount) => {
+    publisherClient.publish(channel, message).then((subscriberCount) => {
       if (subscriberCount > 0) return;
       clearTimeout(timeout);
       pendingCommandAcks.delete(id);
@@ -282,6 +290,7 @@ module.exports = {
   getConnectionStatus,
   stateTracker,
   sendCommand,
+  sendRecordingCommand,
   resetTelemetryState,
   closeTelemetry,
   setCalibrationListener,
