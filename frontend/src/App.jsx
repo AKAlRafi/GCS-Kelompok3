@@ -33,6 +33,7 @@ function App() {
   const [lastTelemetryAt, setLastTelemetryAt] = useState(null)
   const [waypoints, setWaypoints] = useState([])
   const [addingWaypoint, setAddingWaypoint] = useState(false)
+  const [droneMission, setDroneMission] = useState(false)
   const [missionName, setMissionName] = useState('')
   const [missions, setMissions] = useState([])
   const [selectedMissionId, setSelectedMissionId] = useState('')
@@ -50,6 +51,7 @@ function App() {
   const [replayPlaying, setReplayPlaying] = useState(false)
   const [replaySpeed, setReplaySpeed] = useState(1)
   const [replayMessage, setReplayMessage] = useState('')
+  const [replayWaypoints, setReplayWaypoints] = useState([])
   const [replaySeekVersion, setReplaySeekVersion] = useState(0)
   const replayPositionRef = useRef(0)
   const [activeLog, setActiveLog] = useState({ active: false, id: null })
@@ -109,12 +111,14 @@ function App() {
       setReplayFileName(fileName)
       setReplaySamples(data.samples || [])
       setReplayDuration(data.duration_ms || 0)
+      setReplayWaypoints((data.waypoints || []).map((point, index) => ({ ...point, id: `replay-${index}` })))
       replayPositionRef.current = 0
       setReplayPosition(0)
       setReplayMessage(data.samples?.length ? '' : 'TLOG tidak berisi posisi drone.')
     } catch (error) {
       setReplaySamples([])
       setReplayDuration(0)
+      setReplayWaypoints([])
       setReplayMessage(error.message || 'TLOG gagal dibuka.')
       throw error
     }
@@ -197,17 +201,39 @@ function App() {
     return saveMission()
   }, [missionDirty, saveMission, selectedMissionId])
 
-  const downloadMission = useCallback(async (id) => {
-    if (!id) throw new Error('Pilih misi yang mau diunduh.')
-    const response = await apiRequest(`/missions/${id}/download`)
-    const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = missions.find((mission) => String(mission.id) === String(id))?.file_name || 'mission.waypoints'
-    link.click()
-    URL.revokeObjectURL(url)
-  }, [missions])
+  const fetchDroneMission = useCallback(async () => {
+    const data = await apiJson('/fc/missions/download')
+    if (data.ok === false) throw new Error(data.error || 'Gagal membaca misi dari drone.')
+    if (!data.waypoints?.length) throw new Error('Tidak ada misi di drone.')
+    return data.waypoints
+  }, [])
+
+  const readDroneMission = useCallback(async () => {
+    const droneWaypoints = await fetchDroneMission()
+    setWaypoints(droneWaypoints.map((point, index) => ({ ...point, id: `drone-${index}-${crypto.randomUUID()}` })))
+    setSelectedMissionId('')
+    setMissionName('')
+    setMissionDirty(true)
+    setDroneMission(true)
+    setMissionProgress(null)
+    setNavigationGuidance(null)
+    setMissionPaused(false)
+  }, [fetchDroneMission])
+
+  const downloadMission = useCallback(async () => {
+    const droneWaypoints = await fetchDroneMission()
+    const saved = await apiJson('/missions', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: missionName.trim() || `drone-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`,
+        waypoints: droneWaypoints.map(({ command, frame, param1, param2, param3, param4, lat, lon, alt, autocontinue }) => ({
+          command, frame, param1, param2, param3, param4, lat, lon, alt, autocontinue,
+        })),
+      }),
+    })
+    await loadMissions()
+    await loadMission(saved.mission.id)
+  }, [fetchDroneMission, loadMission, loadMissions, missionName])
 
   const importMission = useCallback(async (file) => {
     const form = new FormData()
@@ -312,7 +338,7 @@ function App() {
 
   const addWaypoint = useCallback((position) => {
     setWaypoints((current) => [...current, {
-      id: crypto.randomUUID(), command: 16, frame: 3, lat: position.lat, lon: position.lon, alt: 10,
+      id: crypto.randomUUID(), command: 16, frame: 3, lat: position.lat, lon: position.lon, alt: 100,
       param1: 0, param2: 0, param3: 0, param4: 0, autocontinue: 1,
     }])
     setMissionDirty(true)
@@ -468,6 +494,7 @@ function App() {
         onClearDroneMission={() => runAction('Clear mission on drone', clearDroneMission)}
         onDeleteMission={(id) => runAction('Delete mission', () => deleteMission(id))}
         onDownloadMission={(id) => runAction('Download mission', () => downloadMission(id))}
+        onReadDroneMission={() => runAction('Read mission from drone', readDroneMission)}
         onResetMap={resetMap}
         onImportMission={(file) => runAction('Import mission', () => importMission(file))}
         onToggleHome={() => setHomeVisible((current) => !current)}
@@ -491,8 +518,8 @@ function App() {
           heading={rawHeading}
           followVehicle={followVehicle}
           mapBearing={mapBearing}
-          addingWaypoint={addingWaypoint}
-          waypoints={waypoints}
+          addingWaypoint={addingWaypoint && !replayActive}
+          waypoints={replayActive ? replayWaypoints : waypoints}
           home={{ lat: displayTelemetry.home_lat, lon: displayTelemetry.home_lon }}
           flightTrail={displayTrail}
           showHome={homeVisible}

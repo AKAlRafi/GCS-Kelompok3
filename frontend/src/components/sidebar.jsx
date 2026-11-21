@@ -59,7 +59,7 @@ function MissionSidebar({
   replayPosition = 0, replayDuration = 0, replaySpeed = 1, replayMessage = '',
   missionPaused, onAddWaypointMode, onUpdateWaypoint, onDeleteWaypoint, onMissionNameChange,
   onLoadMission, onSaveMission, onUploadMission, onStartMission, onPauseMission, onResumeMission,
-  onClearDroneMission, onDeleteMission, onDownloadMission, onResetMap, onImportMission,
+  onClearDroneMission, onDeleteMission, onDownloadMission, onReadDroneMission, onResetMap, onImportMission,
   onToggleHome, onToggleRoute, onToggleTrail, onStartLog, onStopLog, onDownloadLog, onRefreshLogs,
   onSelectTlog, onLoadTlog, onToggleTlogPlayback, onStopTlogReplay, onSeekTlogReplay, onTlogSpeedChange,
 }) {
@@ -111,7 +111,8 @@ function MissionSidebar({
         </select>
         <div className="sidebar-button-row">
           <PlaceholderButton disabled={!canEdit || !missionName.trim() || waypoints.length === 0} onClick={onSaveMission}>Save Mission</PlaceholderButton>
-          <PlaceholderButton disabled={!canEdit || !selectedMissionId} onClick={() => onDownloadMission(selectedMissionId)}>Download .waypoints</PlaceholderButton>
+          <PlaceholderButton disabled={!canEdit} onClick={() => onDownloadMission()}>Download from Drone</PlaceholderButton>
+          <PlaceholderButton disabled={!canEdit} onClick={onReadDroneMission}>Read from Drone</PlaceholderButton>
           <PlaceholderButton disabled={!canEdit || waypoints.length === 0} onClick={() => onUploadMission(selectedMissionId)}>Upload Mission</PlaceholderButton>
           <PlaceholderButton primary disabled={!canEdit || waypoints.length === 0} onClick={() => onStartMission(selectedMissionId)}>Start Mission</PlaceholderButton>
           {active && !missionPaused && <PlaceholderButton disabled={!canEdit} onClick={onPauseMission}>Pause</PlaceholderButton>}

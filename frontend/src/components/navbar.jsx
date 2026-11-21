@@ -140,9 +140,9 @@ export default function Navbar() {
           type="button"
           disabled={!connected || !commandsEnabled || busy || !armed}
           title={armed ? 'Takeoff' : 'Arm the vehicle before takeoff'}
-          onClick={() => sendCommand('takeoff', { altitude_m: 10 })}
+          onClick={() => sendCommand('takeoff', { altitude_m: 100 })}
         >
-          Takeoff 10 m
+          Takeoff 100 m
         </button>
         <button
           className="nav-button"
