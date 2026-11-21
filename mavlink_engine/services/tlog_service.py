@@ -93,6 +93,15 @@ class TlogService:
             self._db.row_factory = sqlite3.Row
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.execute(
+                "CREATE TABLE IF NOT EXISTS tlog_messages ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, tlog_id INTEGER NOT NULL, "
+                "ts_us INTEGER NOT NULL, msg_id INTEGER NOT NULL, msg_type TEXT NOT NULL, "
+                "data TEXT NOT NULL)"
+            )
+            self._db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tlog_messages_tlog ON tlog_messages (tlog_id, id)"
+            )
+            self._db.execute(
                 "CREATE TABLE IF NOT EXISTS tlogs ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT NOT NULL, file_path TEXT NOT NULL, "
                 "started_at TEXT NOT NULL, ended_at TEXT, "

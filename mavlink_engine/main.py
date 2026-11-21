@@ -103,9 +103,22 @@ def clean(data):
 
 MISSION_COMMANDS = ("upload_mission", "download_mission", "clear_mission")
 PARAM_COMMANDS = ("download_params", "get_param", "set_param")
+TLOG_COMMANDS = ("start_tlog", "stop_tlog", "tlog_status")
+
+def tlog_command(name, tlog_svc) -> dict:
+    if tlog_svc is None:
+        return {"ok": False, "error": "TLOG is not available"}
+    if name == "start_tlog" and not tlog_svc.is_recording():
+        tlog_svc.start()
+    elif name == "stop_tlog":
+        tlog_svc.stop()
+    recording = tlog_svc.is_recording()
+    if name == "start_tlog" and not recording:
+        return {"ok": False, "error": "TLOG database could not be opened"}
+    return {"ok": True, "recording": recording, "file": tlog_svc.current_path}
 
 
-def dispatch_command(payload, command_svc, mission_svc, calibration_svc=None, param_svc=None) -> dict:
+def dispatch_command(payload, command_svc, mission_svc, calibration_svc=None, param_svc=None, tlog_svc=None) -> dict:
     """Route a backend message {id, type, payload} to MissionService or CommandService."""
     if not isinstance(payload, dict):
         return {"ok": False, "error": "Command payload must be a dictionary"}
@@ -140,6 +153,10 @@ def dispatch_command(payload, command_svc, mission_svc, calibration_svc=None, pa
                 res = param_svc.get_param(inner.get("id"))
             else:
                 res = param_svc.set_param(inner.get("id"), inner.get("value"), inner.get("type"))
+        elif name in TLOG_COMMANDS:
+            res = tlog_command(name, tlog_svc)
+            if name == "start_tlog" and res.get("ok"):
+                mission_svc.download_mission()
         elif name in CALIBRATION_COMMANDS:
             if calibration_svc is None:
                 res = {"ok": False, "error": "Calibration is not available"}
@@ -157,6 +174,7 @@ def process_commands(
     mission_svc: MissionService,
     calibration_svc=None,
     param_svc=None,
+    tlog_svc=None
 ) -> int:
     """Read pending commands from Redis without blocking and publish acks."""
     processed = 0
@@ -165,7 +183,7 @@ def process_commands(
         if cmd_data is None:
             break
         try:
-            result = dispatch_command(cmd_data, command_svc, mission_svc, calibration_svc, param_svc)
+            result = dispatch_command(cmd_data, command_svc, mission_svc, calibration_svc, param_svc, tlog_svc)
         except Exception as e:
             logger.exception(f"Command failed: {e}")
             result = {"ok": False, "error": f"Internal error: {e}"}
@@ -234,7 +252,7 @@ def run() -> None:
                         heartbeat.on_heartbeat(parsed, msg.get_srcSystem(), time.monotonic())
 
             # Check and execute pending commands from Redis
-            process_commands(redis_svc, command_svc, mission_svc, calibration_svc, param_svc)
+            process_commands(redis_svc, command_svc, mission_svc, calibration_svc, param_svc, tlog_svc)
 
             tlog_svc.flush()
 

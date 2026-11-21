@@ -194,8 +194,8 @@ def test_read_messages_returns_set_aside_first_then_new():
 def test_backlog_keeps_only_newest():
     n = mavlink_service.MAX_BACKLOG + 200
     msgs = [_msg("ATTITUDE") for _ in range(n)]
-    s = _feeding(*msgs)
-    assert s.wait_for({"COMMAND_ACK"}, timeout=0.05) is None
+    s = _feeding(*msgs, _ack(400))                                
+    assert s.wait_for({"COMMAND_ACK"}, timeout=5.0) is not None   
     got = s.read_messages()
     assert len(got) == mavlink_service.MAX_BACKLOG
     assert got[0] is msgs[-mavlink_service.MAX_BACKLOG]

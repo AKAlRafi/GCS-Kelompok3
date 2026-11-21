@@ -69,8 +69,6 @@ class MavlinkService:
             self.close()    # Release the socket
             return False
         self.vehicle = (hb.get_srcSystem(), hb.get_srcComponent())
-        if self.tlog is not None:
-            self.tlog.start()
         logger.info(
             f"Heartbeat: sysid={hb.get_srcSystem()} compid={hb.get_srcComponent()} "
             f"type={hb.type} autopilot={hb.autopilot} | "
