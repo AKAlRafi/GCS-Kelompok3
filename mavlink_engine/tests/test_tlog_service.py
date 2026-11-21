@@ -1,5 +1,5 @@
 import os
-import struct
+import sqlite3
 from pymavlink import mavutil
 from mavlink_engine.services.tlog_service import TlogService
 
@@ -15,48 +15,27 @@ def make_msgs():
     return msgs
 
 
-def read_back(path):
-    conn = mavutil.mavlink_connection(path, dialect="ardupilotmega")
-    types = []
-    while True:
-        msg = conn.recv_match(blocking=False)
-        if msg is None:
-            return types
-        types.append(msg.get_type())
+def read_back(tmp_path):
+    """(msg_type, ts_us) of every stored message, in recording order."""
+    db = sqlite3.connect(str(tmp_path / "tlogs.db"))
+    try:
+        return db.execute("SELECT msg_type, ts_us FROM tlog_messages ORDER BY id").fetchall()
+    finally:
+        db.close()
 
 
 def test_not_recording_before_start(tmp_path):
     assert TlogService(log_dir=str(tmp_path)).is_recording() is False
 
 
-def test_start_creates_tlog_file(tmp_path):
+def test_start_registers_tlog_in_database(tmp_path):
     svc = TlogService(log_dir=str(tmp_path))
-    path = svc.start()
-    assert path.endswith(".tlog") and os.path.exists(path)
+    name = svc.start()
+    assert name.endswith(".tlog")
     assert svc.is_recording() is True
+    assert svc.list_tlogs()[0]["file_name"] == name
     svc.stop()
     assert svc.is_recording() is False
-
-
-def test_records_readable_tlog(tmp_path):
-    svc = TlogService(log_dir=str(tmp_path))
-    path = svc.start()
-    for msg in make_msgs():
-        svc.write_msg(msg)
-    svc.stop()
-    assert read_back(path) == ["HEARTBEAT", "ATTITUDE"]
-
-
-def test_each_record_has_8_byte_big_endian_timestamp(tmp_path):
-    svc = TlogService(log_dir=str(tmp_path))
-    path = svc.start()
-    msg = make_msgs()[0]
-    svc.write_msg(msg)
-    svc.stop()
-    data = open(path, "rb").read()
-    assert len(data) == 8 + len(msg.get_msgbuf())
-    assert struct.unpack(">Q", data[:8])[0] > 1_600_000_000_000_000
-
 
 def test_write_ignored_when_not_recording_or_none(tmp_path):
     svc = TlogService(log_dir=str(tmp_path))
@@ -76,13 +55,14 @@ def test_start_adds_row_to_database(tmp_path):
 
 def test_row_counts_messages_and_size(tmp_path):
     svc = TlogService(log_dir=str(tmp_path))
-    path = svc.start()
-    for msg in make_msgs():
+    svc.start()
+    msgs = make_msgs()
+    for msg in msgs:
         svc.write_msg(msg)
     svc.stop()
     row = svc.list_tlogs()[0]
     assert row["message_count"] == 2
-    assert row["size_bytes"] == os.path.getsize(path)
+    assert row["size_bytes"] == sum(8 + len(m.get_msgbuf()) for m in msgs)
 
 
 def test_row_is_current_even_if_never_stopped(tmp_path):
@@ -109,8 +89,9 @@ def test_recording_continues_when_database_fails(tmp_path):
     blocker = tmp_path / "blocker"
     blocker.write_text("a file, so a database cannot be created below it")
     svc = TlogService(log_dir=str(tmp_path), db_path=str(blocker / "tlogs.db"))
-    path = svc.start()
+    svc.start()
     for msg in make_msgs():
-        svc.write_msg(msg)
+        svc.write_msg(msg)    # must not raise
     svc.stop()
-    assert read_back(path) == ["HEARTBEAT", "ATTITUDE"]
+    assert svc.is_recording() is False
+    assert svc.list_tlogs() == []

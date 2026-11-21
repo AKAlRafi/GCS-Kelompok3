@@ -1,9 +1,10 @@
 """MAVLink raw telemetry (.tlog) file recorder."""
 
+import json
 import logging
+import math
 import os
 import sqlite3
-import struct
 import threading
 import time
 from datetime import datetime
@@ -12,6 +13,7 @@ from .. import config
 logger = logging.getLogger(__name__)
 
 DB_UPDATE_INTERVAL = 1.0    # Secs between updates of the tlog row (count, size, end time)
+MAX_BUFFER = 5000           # Messages kept in memory if the database write keeps failing
 
 
 class TlogService:
@@ -24,6 +26,7 @@ class TlogService:
         self.current_path: str | None = None
         self._db = None             # sqlite3 connection, opened by start()
         self._row_id = None         # Row of the tlog being recorded
+        self._buffer = []           # Messages waiting to be written to the database
         self._count = 0
         self._size = 0
         self._last_db_update = 0.0
@@ -89,12 +92,6 @@ class TlogService:
             self._db = sqlite3.connect(self.db_path, check_same_thread=False)
             self._db.row_factory = sqlite3.Row
             self._db.execute("PRAGMA journal_mode=WAL")
-            self._db.execute(
-                "CREATE TABLE IF NOT EXISTS tlog_messages ("
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, tlog_id INTEGER NOT NULL, ts_us INTEGER NOT NULL, "
-                "msg_id INTEGER NOT NULL, msg_type TEXT NOT NULL, data TEXT NOT NULL)"
-            )
-            self._db.execute("CREATE INDEX IF NOT EXISTS idx_tlog_messages ON tlog_messages(tlog_id, id)")
             self._db.execute(
                 "CREATE TABLE IF NOT EXISTS tlogs ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT NOT NULL, file_path TEXT NOT NULL, "
