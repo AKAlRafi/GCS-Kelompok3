@@ -1,5 +1,5 @@
 import os
-import sqlite3
+import struct
 from pymavlink import mavutil
 from mavlink_engine.services.tlog_service import TlogService
 
@@ -15,15 +15,6 @@ def make_msgs():
     return msgs
 
 
-def read_back(tmp_path):
-    """(msg_type, ts_us) of every stored message, in recording order."""
-    db = sqlite3.connect(str(tmp_path / "tlogs.db"))
-    try:
-        return db.execute("SELECT msg_type, ts_us FROM tlog_messages ORDER BY id").fetchall()
-    finally:
-        db.close()
-
-
 def test_not_recording_before_start(tmp_path):
     assert TlogService(log_dir=str(tmp_path)).is_recording() is False
 
@@ -37,11 +28,13 @@ def test_start_registers_tlog_in_database(tmp_path):
     svc.stop()
     assert svc.is_recording() is False
 
+
 def test_write_ignored_when_not_recording_or_none(tmp_path):
     svc = TlogService(log_dir=str(tmp_path))
     svc.write_msg(make_msgs()[0])
     svc.write_msg(None)
     assert os.listdir(tmp_path) == []
+
 
 def test_start_adds_row_to_database(tmp_path):
     svc = TlogService(log_dir=str(tmp_path))
@@ -51,6 +44,33 @@ def test_start_adds_row_to_database(tmp_path):
     assert len(rows) == 1
     assert rows[0]["file_path"] == path
     assert rows[0]["message_count"] == 0
+
+
+def test_file_holds_timestamp_and_raw_bytes(tmp_path):
+    svc = TlogService(log_dir=str(tmp_path))
+    name = svc.start()
+    msgs = make_msgs()
+    for msg in msgs:
+        svc.write_msg(msg)
+    svc.stop()
+    data = (tmp_path / name).read_bytes()
+    expected_len = sum(8 + len(m.get_msgbuf()) for m in msgs)
+    assert len(data) == expected_len
+    assert data[8:8 + len(msgs[0].get_msgbuf())] == msgs[0].get_msgbuf()
+    assert struct.unpack(">Q", data[:8])[0] > 0
+
+
+def test_file_is_readable_by_pymavlink(tmp_path):
+    svc = TlogService(log_dir=str(tmp_path))
+    name = svc.start()
+    for msg in make_msgs():
+        svc.write_msg(msg)
+    svc.stop()
+    reader = mavutil.mavlink_connection(str(tmp_path / name), dialect="common")
+    types = []
+    while (msg := reader.recv_match()) is not None:
+        types.append(msg.get_type())
+    assert types == ["HEARTBEAT", "ATTITUDE"]
 
 
 def test_row_counts_messages_and_size(tmp_path):
@@ -89,9 +109,10 @@ def test_recording_continues_when_database_fails(tmp_path):
     blocker = tmp_path / "blocker"
     blocker.write_text("a file, so a database cannot be created below it")
     svc = TlogService(log_dir=str(tmp_path), db_path=str(blocker / "tlogs.db"))
-    svc.start()
+    name = svc.start()
+    assert svc.is_recording() is True
     for msg in make_msgs():
         svc.write_msg(msg)    # must not raise
     svc.stop()
-    assert svc.is_recording() is False
+    assert (tmp_path / name).stat().st_size > 0
     assert svc.list_tlogs() == []
