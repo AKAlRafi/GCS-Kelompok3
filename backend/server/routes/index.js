@@ -34,6 +34,7 @@ router.post('/logs/stop', flightLogs.stop);
 router.get('/logs/:id/download', flightLogs.download);
 router.get('/logs/:id/telemetry', flightLogs.telemetry);
 router.get('/tlogs', tlogs.list);
+router.get('/tlogs/:fileName/download', tlogs.download);
 router.get('/tlogs/:fileName/replay', tlogs.replay);
 
 module.exports = router;

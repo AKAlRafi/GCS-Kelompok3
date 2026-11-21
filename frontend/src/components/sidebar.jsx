@@ -61,7 +61,7 @@ function MissionSidebar({
   onLoadMission, onSaveMission, onUploadMission, onStartMission, onPauseMission, onResumeMission,
   onClearDroneMission, onDeleteMission, onDownloadMission, onReadDroneMission, onResetMap, onImportMission,
   onToggleHome, onToggleRoute, onToggleTrail, onStartLog, onStopLog, onDownloadLog, onRefreshLogs,
-  onSelectTlog, onLoadTlog, onToggleTlogPlayback, onStopTlogReplay, onSeekTlogReplay, onTlogSpeedChange,
+  onSelectTlog, onLoadTlog, onDownloadTlog, onToggleTlogPlayback, onStopTlogReplay, onSeekTlogReplay, onTlogSpeedChange,
 }) {
   const fileInput = useRef(null)
   const active = missionProgress && !['COMPLETED', 'IDLE', 'FAILED'].includes(missionProgress.stage)
@@ -181,6 +181,7 @@ function MissionSidebar({
         </select>
         <div className="tlog-controls">
           <PlaceholderButton disabled={!selectedTlog || busyAction !== ''} onClick={() => onLoadTlog(selectedTlog)}>Load TLOG</PlaceholderButton>
+          <PlaceholderButton disabled={!selectedTlog || busyAction !== ''} onClick={() => onDownloadTlog(selectedTlog)}>Download TLOG</PlaceholderButton>
           <PlaceholderButton primary disabled={!replayActive} onClick={onToggleTlogPlayback}>
             {replayPlaying ? 'Pause' : 'Play'}
           </PlaceholderButton>

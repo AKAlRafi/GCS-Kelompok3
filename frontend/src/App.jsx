@@ -332,6 +332,18 @@ function App() {
     URL.revokeObjectURL(url)
   }, [flightLogs])
 
+  const downloadTlog = useCallback(async (fileName) => {
+    if (!fileName) throw new Error('Pilih file TLOG dulu.')
+    const response = await apiRequest(`/tlogs/${encodeURIComponent(fileName)}/download`)
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    link.click()
+    URL.revokeObjectURL(url)
+  }, [])
+
   const updateWaypoint = useCallback((id, changes) => {
     setWaypoints((current) => current.map((point) => point.id === id ? { ...point, ...changes } : point))
     setMissionDirty(true)
@@ -511,6 +523,7 @@ function App() {
         onRefreshLogs={() => runAction('Refresh flight logs', async () => { await Promise.all([loadFlightLogs(), loadTlogFiles()]) })}
         onSelectTlog={setSelectedTlog}
         onLoadTlog={(fileName) => runAction('Load TLOG replay', () => loadTlogReplay(fileName))}
+        onDownloadTlog={(fileName) => runAction('Download TLOG', () => downloadTlog(fileName))}
         onToggleTlogPlayback={toggleTlogReplay}
         onStopTlogReplay={stopTlogReplay}
         onSeekTlogReplay={seekTlogReplay}

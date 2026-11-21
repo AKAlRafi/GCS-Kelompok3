@@ -1,4 +1,3 @@
-const fs = require('node:fs');
 const flightLogs = require('../services/flight_log_service');
 
 function list(request, response) {
@@ -39,10 +38,14 @@ function download(request, response) {
   const logId = Number(request.params.id);
   if (!Number.isSafeInteger(logId) || logId < 1) return response.status(400).json({ ok: false, error: 'ID log tidak valid.' });
   const log = flightLogs.getLog(logId);
-  if (!log || !fs.existsSync(log.file_path)) {
-    return response.status(404).json({ ok: false, error: 'File flight log tidak ditemukan.' });
+  if (!log) {
+    return response.status(404).json({ ok: false, error: 'Flight log tidak ditemukan.' });
   }
-  response.download(log.file_path, log.file_name);
+  response.type('application/x-ndjson');
+  response.attachment(log.file_name);
+  const stream = flightLogs.createJsonlStream(logId);
+  stream.on('error', (error) => response.destroy(error));
+  stream.pipe(response);
 }
 
 function telemetry(request, response) {

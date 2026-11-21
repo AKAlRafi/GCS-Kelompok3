@@ -18,37 +18,33 @@ database.exec(`
     description TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
-  CREATE TABLE IF NOT EXISTS flight_logs (
+  CREATE TABLE IF NOT EXISTS flight_jsonl_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    file_name TEXT NOT NULL UNIQUE,
+    recording INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS flight_jsonl (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    recorded_at TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES flight_jsonl_sessions(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS flight_tlogs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     file_name TEXT NOT NULL UNIQUE,
     file_path TEXT NOT NULL,
-    format TEXT NOT NULL DEFAULT 'jsonl',
     recording INTEGER NOT NULL DEFAULT 0,
     file_size INTEGER NOT NULL DEFAULT 0,
     modified_at TEXT,
     started_at TEXT NOT NULL,
     ended_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
-  CREATE TABLE IF NOT EXISTS telemetry_records (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    log_id INTEGER,
-    recorded_at TEXT NOT NULL,
-    latitude REAL,
-    longitude REAL,
-    altitude REAL,
-    relative_altitude REAL,
-    ground_speed REAL,
-    air_speed REAL,
-    roll REAL,
-    pitch REAL,
-    yaw REAL,
-    heading REAL,
-    battery_percent REAL,
-    flight_mode TEXT,
-    armed INTEGER,
-    FOREIGN KEY (log_id) REFERENCES flight_logs(id) ON DELETE SET NULL
   );
   CREATE TABLE IF NOT EXISTS missions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,54 +55,41 @@ database.exec(`
     estimated_flight_time_s REAL NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
-  CREATE INDEX IF NOT EXISTS idx_telemetry_log_time
-    ON telemetry_records(log_id, recorded_at);
+  CREATE INDEX IF NOT EXISTS idx_flight_jsonl_session_time
+    ON flight_jsonl(session_id, recorded_at);
 `);
 
-const existingFlightLogColumns = new Set(database.pragma('table_info(flight_logs)').map((column) => column.name));
-for (const [name, type] of Object.entries({
-  format: "TEXT NOT NULL DEFAULT 'jsonl'",
-  recording: 'INTEGER NOT NULL DEFAULT 0',
-  file_size: 'INTEGER NOT NULL DEFAULT 0',
-  modified_at: 'TEXT'
-})) {
-  if (!existingFlightLogColumns.has(name)) database.exec(`ALTER TABLE flight_logs ADD COLUMN ${name} ${type}`);
+// Keep old TLOG file references, but discard the old permanent JSONL telemetry cache.
+const oldTables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name));
+if (oldTables.has('flight_logs')) {
+  const oldFlightLogColumns = new Set(database.pragma('table_info(flight_logs)').map((column) => column.name));
+  for (const [name, type] of Object.entries({
+    format: "TEXT NOT NULL DEFAULT 'jsonl'",
+    recording: 'INTEGER NOT NULL DEFAULT 0',
+    file_size: 'INTEGER NOT NULL DEFAULT 0',
+    modified_at: 'TEXT'
+  })) {
+    if (!oldFlightLogColumns.has(name)) database.exec(`ALTER TABLE flight_logs ADD COLUMN ${name} ${type}`);
+  }
+  database.exec(`
+    INSERT OR IGNORE INTO flight_tlogs (
+      id, name, file_name, file_path, recording, file_size, modified_at, started_at, ended_at, created_at
+    )
+    SELECT id, name, file_name, file_path, recording, file_size, modified_at, started_at, ended_at, created_at
+    FROM flight_logs WHERE format = 'tlog';
+  `);
+  database.exec('DROP TABLE IF EXISTS telemetry_records; DROP TABLE flight_logs;');
+} else {
+  database.exec('DROP TABLE IF EXISTS telemetry_records;');
 }
 
-const telemetryExtraColumns = {
-  gps_fix_type: 'INTEGER',
-  satellites_visible: 'INTEGER',
-  hdop: 'REAL',
-  imu_ax: 'REAL',
-  imu_ay: 'REAL',
-  imu_az: 'REAL',
-  imu_gx: 'REAL',
-  imu_gy: 'REAL',
-  imu_gz: 'REAL',
-  imu_mx: 'REAL',
-  imu_my: 'REAL',
-  imu_mz: 'REAL',
-  rssi: 'INTEGER',
-  rssi_percent: 'REAL',
-  radio_rssi: 'INTEGER',
-  radio_rssi_dbm: 'REAL',
-  radio_remrssi: 'INTEGER',
-  radio_remrssi_dbm: 'REAL',
-  radio_noise_dbm: 'REAL',
-  radio_txbuf: 'INTEGER',
-  servo1: 'INTEGER',
-  servo2: 'INTEGER',
-  servo3: 'INTEGER',
-  servo4: 'INTEGER',
-  servo5: 'INTEGER',
-  servo6: 'INTEGER',
-  servo7: 'INTEGER',
-  servo8: 'INTEGER'
-};
-const existingTelemetryColumns = new Set(database.pragma('table_info(telemetry_records)').map((column) => column.name));
-for (const [name, type] of Object.entries(telemetryExtraColumns)) {
-  if (!existingTelemetryColumns.has(name)) {
-    database.exec(`ALTER TABLE telemetry_records ADD COLUMN ${name} ${type}`);
+// JSONL telemetry is temporary: a backend restart starts with an empty recording table.
+database.exec('DELETE FROM flight_jsonl; DELETE FROM flight_jsonl_sessions;');
+if (fs.existsSync(config.logFolder)) {
+  for (const entry of fs.readdirSync(config.logFolder, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.toLowerCase().endsWith('.jsonl')) {
+      fs.unlinkSync(path.join(config.logFolder, entry.name));
+    }
   }
 }
 
@@ -122,39 +105,17 @@ for (const parameter of [
   ['stall_speed', 15, 'm/s', 'Batas kecepatan minimum pesawat']
 ]) insertDefaultParameter.run(...parameter);
 
-const pendingTelemetryRecords = [];
-const maxPendingTelemetryRecords = 10000;
-const telemetryRecordsPerBatch = 250;
-const telemetryColumns = [
-  'latitude', 'longitude', 'altitude', 'relative_altitude', 'ground_speed',
-  'air_speed', 'roll', 'pitch', 'yaw', 'heading', 'battery_percent',
-  ...Object.keys(telemetryExtraColumns)
-];
-const insertTelemetry = database.prepare(`
-  INSERT INTO telemetry_records (
-    log_id, recorded_at, latitude, longitude, altitude, relative_altitude,
-    ground_speed, air_speed, roll, pitch, yaw, heading, battery_percent,
-    gps_fix_type, satellites_visible, hdop,
-    imu_ax, imu_ay, imu_az, imu_gx, imu_gy, imu_gz, imu_mx, imu_my, imu_mz,
-    rssi, rssi_percent, radio_rssi, radio_rssi_dbm, radio_remrssi,
-    radio_remrssi_dbm, radio_noise_dbm, radio_txbuf,
-    servo1, servo2, servo3, servo4, servo5, servo6, servo7, servo8,
-    flight_mode, armed
-  ) VALUES (
-    @log_id, @recorded_at, @latitude, @longitude, @altitude, @relative_altitude,
-    @ground_speed, @air_speed, @roll, @pitch, @yaw, @heading, @battery_percent,
-    @gps_fix_type, @satellites_visible, @hdop,
-    @imu_ax, @imu_ay, @imu_az, @imu_gx, @imu_gy, @imu_gz, @imu_mx, @imu_my, @imu_mz,
-    @rssi, @rssi_percent, @radio_rssi, @radio_rssi_dbm, @radio_remrssi,
-    @radio_remrssi_dbm, @radio_noise_dbm, @radio_txbuf,
-    @servo1, @servo2, @servo3, @servo4, @servo5, @servo6, @servo7, @servo8,
-    @flight_mode, @armed
-  )
+const pendingJsonlRecords = [];
+const maxPendingJsonlRecords = 10000;
+const jsonlRecordsPerBatch = 250;
+const insertJsonlRecord = database.prepare(`
+  INSERT INTO flight_jsonl (session_id, recorded_at, payload)
+  VALUES (@session_id, @recorded_at, @payload)
 `);
-const insertTelemetryBatch = database.transaction((records) => {
-  for (const record of records) insertTelemetry.run(record);
+const insertJsonlBatch = database.transaction((records) => {
+  for (const record of records) insertJsonlRecord.run(record);
 });
-let droppedTelemetryCount = 0;
+let droppedJsonlCount = 0;
 
 function listParameters() {
   return database.prepare('SELECT * FROM parameters ORDER BY name').all();
@@ -182,18 +143,18 @@ function saveParameters(parameters) {
   return listParameters();
 }
 
-function createFlightLog({ name, fileName, filePath }) {
+function createFlightLog({ name, fileName }) {
   const result = database.prepare(`
-    INSERT INTO flight_logs (name, file_name, file_path, format, recording, started_at)
-    VALUES (?, ?, ?, 'jsonl', 1, ?)
-  `).run(name, fileName, filePath, new Date().toISOString());
+    INSERT INTO flight_jsonl_sessions (name, file_name, recording, started_at)
+    VALUES (?, ?, 1, ?)
+  `).run(name, fileName, new Date().toISOString());
   return Number(result.lastInsertRowid);
 }
 
 function upsertTlogFile({ name, fileName, filePath, startedAt, fileSize, modifiedAt, recording }) {
   database.prepare(`
-    INSERT INTO flight_logs (name, file_name, file_path, format, recording, file_size, modified_at, started_at, ended_at)
-    VALUES (?, ?, ?, 'tlog', ?, ?, ?, ?, CASE WHEN ? = 1 THEN NULL ELSE ? END)
+    INSERT INTO flight_tlogs (name, file_name, file_path, recording, file_size, modified_at, started_at, ended_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN NULL ELSE ? END)
     ON CONFLICT(file_name) DO UPDATE SET
       file_path = excluded.file_path,
       recording = excluded.recording,
@@ -201,15 +162,18 @@ function upsertTlogFile({ name, fileName, filePath, startedAt, fileSize, modifie
       modified_at = excluded.modified_at,
       ended_at = CASE
         WHEN excluded.recording = 1 THEN NULL
-        ELSE COALESCE(flight_logs.ended_at, excluded.modified_at)
+        ELSE COALESCE(flight_tlogs.ended_at, excluded.modified_at)
       END
   `).run(name, fileName, filePath, Number(recording), fileSize, modifiedAt, startedAt,
     Number(recording), modifiedAt);
 }
 
 function syncTlogFiles() {
-  if (!fs.existsSync(config.tlogFolder)) return [];
-  return fs.readdirSync(config.tlogFolder, { withFileTypes: true })
+  if (!fs.existsSync(config.tlogFolder)) {
+    database.exec('DELETE FROM flight_tlogs');
+    return [];
+  }
+  const files = fs.readdirSync(config.tlogFolder, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.tlog'))
     .map((entry) => {
       const filePath = path.join(config.tlogFolder, entry.name);
@@ -228,24 +192,35 @@ function syncTlogFiles() {
         recording,
       });
       return { file_name: entry.name, size: stat.size, modified_at: stat.mtime.toISOString(), recording: Boolean(recording) };
-    })
-    .sort((first, second) => second.modified_at.localeCompare(first.modified_at));
+    });
+  const fileNames = files.map((file) => file.file_name);
+  if (fileNames.length) {
+    database.prepare(`DELETE FROM flight_tlogs WHERE file_name NOT IN (${fileNames.map(() => '?').join(',')})`).run(...fileNames);
+  } else {
+    database.exec('DELETE FROM flight_tlogs');
+  }
+  return files.sort((first, second) => second.modified_at.localeCompare(first.modified_at));
 }
 
 function finishFlightLog(id) {
-  return database.prepare('UPDATE flight_logs SET ended_at = ?, recording = 0 WHERE id = ?')
+  if (!flushAllTelemetry()) throw new Error('Catatan JSONL belum berhasil disimpan ke database.');
+  return database.prepare('UPDATE flight_jsonl_sessions SET ended_at = ?, recording = 0 WHERE id = ?')
     .run(new Date().toISOString(), id).changes > 0;
 }
 
 function listFlightLogs() {
   return database.prepare(`
-    SELECT id, name, file_name, format, recording, file_size, modified_at, started_at, ended_at, created_at
-    FROM flight_logs ORDER BY id DESC
+    SELECT id, name, file_name, 'jsonl' AS format, recording, started_at, ended_at, created_at
+    FROM flight_jsonl_sessions ORDER BY id DESC
   `).all();
 }
 
 function getFlightLog(id) {
-  return database.prepare('SELECT * FROM flight_logs WHERE id = ?').get(id);
+  return database.prepare('SELECT *, \'jsonl\' AS format FROM flight_jsonl_sessions WHERE id = ?').get(id);
+}
+
+function getTlogFile(fileName) {
+  return database.prepare('SELECT * FROM flight_tlogs WHERE file_name = ?').get(fileName);
 }
 
 function createMission({ name, fileName, waypointCount, totalDistanceM, estimatedFlightTimeS }) {
@@ -268,55 +243,56 @@ function deleteMission(id) {
   return database.prepare('DELETE FROM missions WHERE id = ?').run(id).changes > 0;
 }
 
-function normalizeTelemetryRecord(record) {
-  const values = {};
-  for (const column of telemetryColumns) {
-    const value = record[column];
-    values[column] = value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
-  }
-  return {
-    ...values,
-    log_id: record.log_id ?? null,
-    recorded_at: record.recorded_at || new Date().toISOString(),
-    flight_mode: record.flight_mode ?? null,
-    armed: record.armed == null ? null : Number(Boolean(record.armed))
-  };
-}
-
 function flushTelemetry() {
-  if (pendingTelemetryRecords.length === 0) return true;
-  const batch = pendingTelemetryRecords.splice(0, telemetryRecordsPerBatch);
+  if (pendingJsonlRecords.length === 0) return true;
+  const batch = pendingJsonlRecords.splice(0, jsonlRecordsPerBatch);
   try {
-    insertTelemetryBatch(batch.map(normalizeTelemetryRecord));
+    insertJsonlBatch(batch);
     return true;
   } catch (error) {
-    pendingTelemetryRecords.unshift(...batch);
-    console.error('Gagal menyimpan batch telemetry:', error.message);
+    pendingJsonlRecords.unshift(...batch);
+    console.error('Gagal menyimpan batch JSONL:', error.message);
     return false;
   }
+}
+
+function flushAllTelemetry() {
+  while (pendingJsonlRecords.length > 0) {
+    if (!flushTelemetry()) return false;
+  }
+  return true;
 }
 
 function saveTelemetry(record) {
-  if (pendingTelemetryRecords.length >= maxPendingTelemetryRecords) {
-    droppedTelemetryCount += 1;
+  if (pendingJsonlRecords.length >= maxPendingJsonlRecords) {
+    droppedJsonlCount += 1;
     return false;
   }
-  pendingTelemetryRecords.push({ ...record });
-  if (pendingTelemetryRecords.length >= telemetryRecordsPerBatch) flushTelemetry();
+  pendingJsonlRecords.push({
+    session_id: record.session_id,
+    recorded_at: record.recorded_at || new Date().toISOString(),
+    payload: JSON.stringify(record.payload)
+  });
+  if (pendingJsonlRecords.length >= jsonlRecordsPerBatch) flushTelemetry();
   return true;
 }
 
 function getTelemetryQueueStatus() {
-  return { queued: pendingTelemetryRecords.length, dropped: droppedTelemetryCount };
+  return { queued: pendingJsonlRecords.length, dropped: droppedJsonlCount };
 }
 
 function listTelemetry(logId, requestedLimit) {
-  flushTelemetry();
+  flushAllTelemetry();
   const parsedLimit = Number.parseInt(requestedLimit, 10);
   const limit = Number.isFinite(parsedLimit) ? Math.min(10000, Math.max(1, parsedLimit)) : 1000;
-  return database.prepare(`
-    SELECT * FROM telemetry_records WHERE log_id = ? ORDER BY recorded_at ASC LIMIT ?
-  `).all(logId, limit);
+  return database.prepare('SELECT payload FROM flight_jsonl WHERE session_id = ? ORDER BY id ASC LIMIT ?')
+    .all(logId, limit)
+    .map((record) => JSON.parse(record.payload));
+}
+
+function iterateFlightJsonl(logId) {
+  if (!flushAllTelemetry()) throw new Error('Catatan JSONL belum berhasil disimpan ke database.');
+  return database.prepare('SELECT payload FROM flight_jsonl WHERE session_id = ? ORDER BY id ASC').iterate(logId);
 }
 
 module.exports = {
@@ -325,6 +301,7 @@ module.exports = {
   createFlightLog,
   upsertTlogFile,
   syncTlogFiles,
+  getTlogFile,
   finishFlightLog,
   listFlightLogs,
   getFlightLog,
@@ -336,11 +313,10 @@ module.exports = {
   flushTelemetry,
   getTelemetryQueueStatus,
   listTelemetry,
+  iterateFlightJsonl,
   close: () => {
     clearInterval(telemetryFlushTimer);
-    while (pendingTelemetryRecords.length > 0) {
-      if (!flushTelemetry()) throw new Error('Telemetry yang belum tersimpan masih tertahan di antrean.');
-    }
+    if (!flushAllTelemetry()) throw new Error('JSONL yang belum tersimpan masih tertahan di antrean.');
     if (database.open) database.close();
   }
 };
