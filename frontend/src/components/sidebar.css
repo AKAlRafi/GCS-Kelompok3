@@ -299,6 +299,12 @@
   color: #91a1ba;
   font-size: 8px;
 }
+.flight-log-row .log-format {
+  margin-left: 5px;
+  color: #e7c021;
+  font-size: 8px;
+  text-transform: uppercase;
+}
 .tlog-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -396,6 +402,33 @@
   color: #ffd6d8;
   background: #762630;
   border-color: #a23a45;
+}
+.safety-alert-list {
+  display: grid;
+  gap: 6px;
+}
+.safety-alert {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid #e7c021;
+  border-radius: 7px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.safety-alert.warning {
+  color: #ffe8a3;
+  background: #3d3215;
+  border-color: #d39b20;
+}
+.safety-alert.critical {
+  color: #ffe0e0;
+  background: #4b1d24;
+  border-color: #e25252;
+}
+.safety-alert b {
+  font-size: 9px;
+  letter-spacing: 0.06em;
 }
 .more-toggle {
   flex: 0 0 34px;

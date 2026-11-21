@@ -162,7 +162,7 @@ function MissionSidebar({
         {flightLogs.length === 0 && <div className="log-placeholder">No flight logs</div>}
         {flightLogs.map((log) => (
           <div className="flight-log-row" key={log.id}>
-            <span><b>{log.name}</b><small>{new Date(log.started_at).toLocaleString()}</small></span>
+            <span><b>{log.name} <small className="log-format">{log.format || 'JSONL'}</small></b><small>{new Date(log.started_at).toLocaleString()}</small></span>
             <button type="button" className="sidebar-refresh" title="Download this flight log" onClick={() => onDownloadLog(log.id)}>↓</button>
           </div>
         ))}
@@ -211,7 +211,7 @@ function MissionSidebar({
   )
 }
 
-function PlaneStatusSidebar({ telemetry, serverOnline, vehicleConnected, socketConnected, lastTelemetryAt, safetyAlert }) {
+function PlaneStatusSidebar({ telemetry, serverOnline, vehicleConnected, socketConnected, lastTelemetryAt, safetyAlerts = [], failsafeAlert = '' }) {
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -261,7 +261,17 @@ function PlaneStatusSidebar({ telemetry, serverOnline, vehicleConnected, socketC
 
       <section className="sidebar-section">
         <h3>Safety</h3>
-        <div className={`safety-placeholder${safetyAlert ? ' has-alert' : ''}`}>{safetyAlert || 'No safety alerts'}</div>
+        {failsafeAlert && <div className="safety-alert critical">{failsafeAlert}</div>}
+        {safetyAlerts.length > 0
+          ? <div className="safety-alert-list">
+              {safetyAlerts.map((alert) => (
+                <div className={`safety-alert ${alert.severity}`} key={alert.id}>
+                  <b>{alert.severity === 'critical' ? 'CRITICAL' : 'WARNING'}</b>
+                  <span>{alert.message}</span>
+                </div>
+              ))}
+            </div>
+          : !failsafeAlert && <div className="safety-placeholder">No safety alerts</div>}
         <div className="sidebar-status-list">
           <span>Telemetry <b>{status}</b></span>
           <span>Last update <b>{lastTelemetryAt ? new Date(lastTelemetryAt).toLocaleTimeString() : '—'}</b></span>

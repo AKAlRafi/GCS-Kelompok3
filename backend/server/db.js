@@ -23,6 +23,10 @@ database.exec(`
     name TEXT NOT NULL,
     file_name TEXT NOT NULL UNIQUE,
     file_path TEXT NOT NULL,
+    format TEXT NOT NULL DEFAULT 'jsonl',
+    recording INTEGER NOT NULL DEFAULT 0,
+    file_size INTEGER NOT NULL DEFAULT 0,
+    modified_at TEXT,
     started_at TEXT NOT NULL,
     ended_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -58,6 +62,16 @@ database.exec(`
   CREATE INDEX IF NOT EXISTS idx_telemetry_log_time
     ON telemetry_records(log_id, recorded_at);
 `);
+
+const existingFlightLogColumns = new Set(database.pragma('table_info(flight_logs)').map((column) => column.name));
+for (const [name, type] of Object.entries({
+  format: "TEXT NOT NULL DEFAULT 'jsonl'",
+  recording: 'INTEGER NOT NULL DEFAULT 0',
+  file_size: 'INTEGER NOT NULL DEFAULT 0',
+  modified_at: 'TEXT'
+})) {
+  if (!existingFlightLogColumns.has(name)) database.exec(`ALTER TABLE flight_logs ADD COLUMN ${name} ${type}`);
+}
 
 const telemetryExtraColumns = {
   gps_fix_type: 'INTEGER',
@@ -170,20 +184,62 @@ function saveParameters(parameters) {
 
 function createFlightLog({ name, fileName, filePath }) {
   const result = database.prepare(`
-    INSERT INTO flight_logs (name, file_name, file_path, started_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO flight_logs (name, file_name, file_path, format, recording, started_at)
+    VALUES (?, ?, ?, 'jsonl', 1, ?)
   `).run(name, fileName, filePath, new Date().toISOString());
   return Number(result.lastInsertRowid);
 }
 
+function upsertTlogFile({ name, fileName, filePath, startedAt, fileSize, modifiedAt, recording }) {
+  database.prepare(`
+    INSERT INTO flight_logs (name, file_name, file_path, format, recording, file_size, modified_at, started_at, ended_at)
+    VALUES (?, ?, ?, 'tlog', ?, ?, ?, ?, CASE WHEN ? = 1 THEN NULL ELSE ? END)
+    ON CONFLICT(file_name) DO UPDATE SET
+      file_path = excluded.file_path,
+      recording = excluded.recording,
+      file_size = excluded.file_size,
+      modified_at = excluded.modified_at,
+      ended_at = CASE
+        WHEN excluded.recording = 1 THEN NULL
+        ELSE COALESCE(flight_logs.ended_at, excluded.modified_at)
+      END
+  `).run(name, fileName, filePath, Number(recording), fileSize, modifiedAt, startedAt,
+    Number(recording), modifiedAt);
+}
+
+function syncTlogFiles() {
+  if (!fs.existsSync(config.tlogFolder)) return [];
+  return fs.readdirSync(config.tlogFolder, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.tlog'))
+    .map((entry) => {
+      const filePath = path.join(config.tlogFolder, entry.name);
+      const stat = fs.statSync(filePath);
+      let recording = 0;
+      try {
+        if (Date.now() - fs.statSync(`${filePath}.active`).mtimeMs <= 10000) recording = 1;
+      } catch {}
+      upsertTlogFile({
+        name: 'flight',
+        fileName: entry.name,
+        filePath,
+        startedAt: stat.birthtime.toISOString(),
+        fileSize: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+        recording,
+      });
+      return { file_name: entry.name, size: stat.size, modified_at: stat.mtime.toISOString(), recording: Boolean(recording) };
+    })
+    .sort((first, second) => second.modified_at.localeCompare(first.modified_at));
+}
+
 function finishFlightLog(id) {
-  return database.prepare('UPDATE flight_logs SET ended_at = ? WHERE id = ?')
+  return database.prepare('UPDATE flight_logs SET ended_at = ?, recording = 0 WHERE id = ?')
     .run(new Date().toISOString(), id).changes > 0;
 }
 
 function listFlightLogs() {
   return database.prepare(`
-    SELECT id, name, file_name, started_at, ended_at, created_at
+    SELECT id, name, file_name, format, recording, file_size, modified_at, started_at, ended_at, created_at
     FROM flight_logs ORDER BY id DESC
   `).all();
 }
@@ -267,6 +323,8 @@ module.exports = {
   listParameters,
   saveParameters,
   createFlightLog,
+  upsertTlogFile,
+  syncTlogFiles,
   finishFlightLog,
   listFlightLogs,
   getFlightLog,
@@ -289,3 +347,4 @@ module.exports = {
 
 const telemetryFlushTimer = setInterval(flushTelemetry, 250);
 telemetryFlushTimer.unref();
+syncTlogFiles();

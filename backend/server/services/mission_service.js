@@ -234,7 +234,6 @@ async function startMission(id, reportProgress = () => {}) {
     await waitForTakeoff(targetAltitude);
   }
 
-  requireAcceptedCommand(await telemetry.sendCommand('set_mode', { mode: 'AUTO' }), 'mode AUTO');
   reportProgress({ mission_id: Number(id), stage: 'STARTING_MISSION', active_waypoint: 0 });
   const result = await telemetry.sendCommand('start_mission', { mission_id: Number(id) });
   requireAcceptedCommand(result, 'mulai misi');

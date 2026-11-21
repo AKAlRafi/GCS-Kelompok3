@@ -238,6 +238,7 @@ function getHealth() {
     command_channel: config.redisCommandChannel,
     command_ack_channel: config.redisAckChannel,
     commands_enabled: config.commandsEnabled,
+    allowed_flight_modes: config.allowedFlightModes,
     telemetry_queue: require('../db').getTelemetryQueueStatus()
   };
 }

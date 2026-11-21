@@ -45,14 +45,14 @@ if (Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyCont
 }
 
 if ($ConnectionMode -eq 'USB') {
-  $portOutput = & $enginePython $serialPortTool list 2>$null
+  $portOutput = @(& $enginePython $serialPortTool list 2>$null)
   if ($LASTEXITCODE -ne 0) {
     throw 'Gagal membaca port aktif. Pastikan pyserial sudah terpasang di backend/mavlink_engine/.venv.'
   }
 
   $portEntries = @(
-    foreach ($line in $portOutput) {
-      $parts = $line -split "`t", 2
+    $portOutput | ForEach-Object {
+      $parts = $_ -split "`t", 2
       if ($parts[0].Trim() -match '^COM\d+$') {
         $description = if ($parts.Count -gt 1) { $parts[1].Trim() } else { 'Serial device' }
         [pscustomobject]@{
@@ -60,8 +60,8 @@ if ($ConnectionMode -eq 'USB') {
           Description = $description
         }
       }
-    }
-  ) | Sort-Object Port
+    } | Sort-Object { [int]($_.Port -replace '^COM', '') }
+  )
 
   if ($portEntries.Count -eq 0) {
     throw 'Tidak ada port serial aktif yang terdeteksi. Periksa kabel data dan driver FC.'
@@ -78,12 +78,17 @@ if ($ConnectionMode -eq 'USB') {
       $SerialPort = $portEntries[0].Port
       Write-Host "Menggunakan $SerialPort."
     } else {
-      $selection = Read-Host 'Pilih nomor port FC'
+      $selection = (Read-Host 'Pilih nomor daftar atau nama port (mis. COM11)').Trim().ToUpperInvariant()
       $portIndex = 0
-      if (-not [int]::TryParse($selection, [ref]$portIndex) -or $portIndex -lt 1 -or $portIndex -gt $portEntries.Count) {
+      if ([int]::TryParse($selection, [ref]$portIndex) -and $portIndex -ge 1 -and $portIndex -le $portEntries.Count) {
+        $SerialPort = $portEntries[$portIndex - 1].Port
+      } elseif ($selection -match '^COM\d+$' -and ($portEntries | Where-Object Port -eq $selection)) {
+        $SerialPort = $selection
+      } elseif ($selection -match '^\d+$' -and ($portEntries | Where-Object Port -eq "COM$selection")) {
+        $SerialPort = "COM$selection"
+      } else {
         throw 'Pilihan port tidak valid.'
       }
-      $SerialPort = $portEntries[$portIndex - 1].Port
     }
   }
 

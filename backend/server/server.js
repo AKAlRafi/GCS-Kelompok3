@@ -11,6 +11,8 @@ const telemetryService = require('./services/telemetry_service');
 const missionService = require('./services/mission_service');
 const stateTracker = require('./services/stateTracker');
 const navigation = require('./services/navigasiDrone');
+const safetyAlerts = require('./services/safety_alert_service');
+const tlogReplayService = require('./services/tlog_replay_service');
 
 function createApp() {
   const app = express();
@@ -120,6 +122,7 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
   telemetryService.setMissionStarter((id) => {
     activeMission = Number(id);
     activeWaypointIndex = 0;
+    waypointReachedAt = null;
     emergencyTriggered = false;
   });
   telemetryService.setMissionProgressListener((progress) => io.emit('mission_progress', progress));
@@ -138,6 +141,21 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
     void telemetryService.sendCommand('rtl', {}).catch((error) => console.error('Perintah failsafe RTL gagal dikirim:', error.message));
   }, 500);
   failsafeTimer.unref();
+  const safetyAlertTimer = setInterval(() => {
+    try {
+      io.emit('safety_alerts', safetyAlerts.buildSafetyAlerts(
+        stateTracker.getState(), database.listParameters(), config.maxMissionDistanceFromHome
+      ));
+    } catch (error) {
+      console.error('Gagal memperbarui safety alert:', error.message);
+    }
+  }, 1000);
+  safetyAlertTimer.unref();
+  const tlogIndexTimer = setInterval(() => {
+    try { tlogReplayService.listTlogs(); }
+    catch (error) { console.error('Gagal memperbarui daftar TLOG:', error.message); }
+  }, 5000);
+  tlogIndexTimer.unref();
 
   const redisRetry = connectRedis ? setInterval(async () => {
     if (connecting || telemetryService.getHealth().redis) return;
@@ -172,6 +190,8 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
     stopping = true;
     if (redisRetry) clearInterval(redisRetry);
     clearInterval(failsafeTimer);
+    clearInterval(safetyAlertTimer);
+    clearInterval(tlogIndexTimer);
     await new Promise((resolve) => io.close(resolve));
     await telemetryService.closeTelemetry().catch((error) => console.error('Gagal menutup Redis:', error.message));
     database.close();

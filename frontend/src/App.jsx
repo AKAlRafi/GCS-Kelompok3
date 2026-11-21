@@ -64,7 +64,8 @@ function App() {
   const [resetToken, setResetToken] = useState(0)
   const [busyAction, setBusyAction] = useState('')
   const [sidebarMessage, setSidebarMessage] = useState('')
-  const [safetyAlert, setSafetyAlert] = useState('')
+  const [safetyAlerts, setSafetyAlerts] = useState([])
+  const [failsafeAlert, setFailsafeAlert] = useState('')
 
   const receiveTelemetry = useCallback((data) => {
     if (!data || typeof data !== 'object') return
@@ -371,13 +372,15 @@ function App() {
       if (progress.stage === 'COMPLETED') setMissionPaused(false)
     }
     const handleNavigationGuidance = setNavigationGuidance
-    const handleFailsafe = (warning) => setSafetyAlert(warning?.message || warning?.reason || 'Safety alert')
+    const handleSafetyAlerts = (alerts) => setSafetyAlerts(Array.isArray(alerts) ? alerts : [])
+    const handleFailsafe = (warning) => setFailsafeAlert(warning?.message || warning?.reason || 'Failsafe aktif.')
 
     socket.on('connect', handleConnect)
     socket.on('disconnect', handleDisconnect)
     socket.on('telemetry', receiveTelemetry)
     socket.on('mission_progress', handleMissionProgress)
     socket.on('navigation_guidance', handleNavigationGuidance)
+    socket.on('safety_alerts', handleSafetyAlerts)
     socket.on('failsafe_warning', handleFailsafe)
     socket.connect()
 
@@ -387,6 +390,7 @@ function App() {
       socket.off('telemetry', receiveTelemetry)
       socket.off('mission_progress', handleMissionProgress)
       socket.off('navigation_guidance', handleNavigationGuidance)
+      socket.off('safety_alerts', handleSafetyAlerts)
       socket.off('failsafe_warning', handleFailsafe)
       socket.disconnect()
     }
@@ -473,7 +477,8 @@ function App() {
         vehicleConnected={vehicleConnected}
         socketConnected={socketConnected}
         lastTelemetryAt={lastTelemetryAt}
-        safetyAlert={safetyAlert}
+        safetyAlerts={safetyAlerts}
+        failsafeAlert={failsafeAlert}
         busyAction={busyAction}
         message={sidebarMessage}
         addingWaypoint={addingWaypoint}

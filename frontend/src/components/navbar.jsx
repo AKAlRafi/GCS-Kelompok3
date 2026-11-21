@@ -1,19 +1,26 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Calibration from './calibration'
 import './navbar.css'
 import { apiJson } from '../services/api'
-const MODE_OPTIONS = (import.meta.env.VITE_ALLOWED_FLIGHT_MODES || 'STABILIZE,ACRO,ALT_HOLD,AUTO,GUIDED,LOITER,RTL,FBWA,MANUAL')
-  .split(',').map((mode) => mode.trim().toUpperCase()).filter((mode) => mode && mode !== 'TAKEOFF')
-
   
 export default function Navbar() {
   const [telemetry, setTelemetry] = useState(null)
   const [serverOnline, setServerOnline] = useState(false)
   const [vehicleConnected, setVehicleConnected] = useState(false)
   const [commandsEnabled, setCommandsEnabled] = useState(false)
+  const [allowedModes, setAllowedModes] = useState([])
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [calOpen, setCalOpen] = useState(false)
+  const noticeTimer = useRef(null)
+
+  const showNotice = (message, duration) => {
+    window.clearTimeout(noticeTimer.current)
+    setNotice(message)
+    noticeTimer.current = window.setTimeout(() => setNotice(''), duration)
+  }
+
+  useEffect(() => () => window.clearTimeout(noticeTimer.current), [])
 
   useEffect(() => {
     if (!calOpen) return
@@ -38,6 +45,9 @@ export default function Navbar() {
       ])
       setServerOnline(Boolean(health.ok))
       setCommandsEnabled(Boolean(health.commands_enabled))
+      if (Array.isArray(health.allowed_flight_modes)) {
+        setAllowedModes(health.allowed_flight_modes.map((mode) => String(mode).trim().toUpperCase()).filter(Boolean))
+      }
       setVehicleConnected(Boolean(connection.connected))
       setTelemetry(state || null)
     } catch {
@@ -53,6 +63,7 @@ export default function Navbar() {
   }, [refresh])
 
   const sendCommand = async (type, payload = {}) => {
+    if (busy) return
     setBusy(true)
     setNotice('')
     try {
@@ -60,12 +71,10 @@ export default function Navbar() {
         method: 'POST',
         body: JSON.stringify({ type, payload }),
       })
-      setNotice('Command sent')
-      window.setTimeout(() => setNotice(''), 3500)
-      refresh()
+      showNotice('Command confirmed', 3500)
+      await refresh()
     } catch (error) {
-      setNotice(error.message)
-      window.setTimeout(() => setNotice(''), 5000)
+      showNotice(error.message, 5000)
     } finally {
       setBusy(false)
     }
@@ -74,6 +83,25 @@ export default function Navbar() {
   const armed = telemetry?.armed === true
   const connected = Boolean(serverOnline && vehicleConnected)
   const currentMode = telemetry?.flight_mode || ''
+  const commandReady = connected && commandsEnabled && !busy
+  const currentModeName = currentMode.toUpperCase()
+  const isAutoland = currentModeName === 'AUTOLAND'
+  const relativeAltitude = Number(telemetry?.rel_alt)
+  const speed = Number(telemetry?.airspeed ?? telemetry?.air_speed ?? telemetry?.groundspeed ?? telemetry?.ground_speed)
+  const airborne = armed && (telemetry?.rel_alt == null || !Number.isFinite(relativeAltitude)
+    || relativeAltitude > 2 || (Number.isFinite(speed) && speed > 5))
+  const canArm = commandReady && (!isAutoland || armed)
+  const canDisarm = commandReady && armed && !airborne
+  const canTakeoff = commandReady && armed && !isAutoland
+  const modes = allowedModes.length ? allowedModes : ['STABILIZE', 'ACRO', 'MANUAL', 'FBWA', 'AUTO', 'GUIDED', 'LOITER', 'RTL', 'TAKEOFF']
+  const modeIsListed = modes.includes(currentModeName)
+  const unavailableReason = !serverOnline
+    ? 'Server belum terhubung'
+    : !vehicleConnected
+      ? 'Vehicle belum terhubung'
+      : !commandsEnabled
+        ? 'Kontrol perintah belum diaktifkan'
+        : ''
 
   return (
     <header className="gcs-navbar">
@@ -118,7 +146,10 @@ export default function Navbar() {
         <button
           className={`nav-button arm-button${armed ? ' is-armed' : ''}`}
           type="button"
-          disabled={!connected || !commandsEnabled || busy}
+          disabled={armed ? !canDisarm : !canArm}
+          title={armed
+            ? (unavailableReason || (airborne ? 'Tidak bisa disarm saat pesawat masih di udara atau ketinggian belum tersedia' : 'Disarm pesawat'))
+            : (unavailableReason || (isAutoland ? 'Pilih MANUAL atau FBWA sebelum arm setelah landing' : 'Arm pesawat sebelum takeoff'))}
           onClick={() => sendCommand(armed ? 'disarm' : 'arm')}
         >
           {busy ? 'WAIT…' : armed ? 'Disarm' : 'Arm'}
@@ -128,18 +159,22 @@ export default function Navbar() {
           <select
             className="mode-select"
             value={currentMode}
-            disabled={!connected || !commandsEnabled || busy}
+            disabled={!commandReady}
+            title={commandReady ? 'Pilih mode terbang' : (unavailableReason || 'Tunggu perintah sebelumnya selesai')}
             onChange={(event) => sendCommand('set_mode', { mode: event.target.value })}
           >
             <option value="" disabled>Set mode</option>
-            {MODE_OPTIONS.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+            {!modeIsListed && currentMode && <option value={currentMode} disabled>{currentMode}</option>}
+            {modes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
           </select>
         </label>
         <button
           className="nav-button"
           type="button"
-          disabled={!connected || !commandsEnabled || busy || !armed}
-          title={armed ? 'Takeoff' : 'Arm the vehicle before takeoff'}
+          disabled={!canTakeoff}
+          title={unavailableReason || (isAutoland
+            ? 'Pilih MANUAL atau FBWA, lalu arm sebelum takeoff'
+            : (armed ? 'Takeoff' : 'Arm the vehicle before takeoff'))}
           onClick={() => sendCommand('takeoff', { altitude_m: 100 })}
         >
           Takeoff 100 m
@@ -147,7 +182,8 @@ export default function Navbar() {
         <button
           className="nav-button"
           type="button"
-          disabled={!connected || !commandsEnabled || busy}
+          disabled={!commandReady || !armed}
+          title={unavailableReason || (armed ? 'Land' : 'Arm pesawat sebelum menggunakan Land')}
           onClick={() => sendCommand('land')}
         >
           Land
@@ -155,7 +191,8 @@ export default function Navbar() {
         <button
           className="nav-button safety-button"
           type="button"
-          disabled={!connected || !commandsEnabled || busy}
+          disabled={!commandReady || !armed}
+          title={unavailableReason || (armed ? 'Return to launch' : 'Arm pesawat sebelum menggunakan RTL')}
           onClick={() => sendCommand('rtl')}
         >
           RTL

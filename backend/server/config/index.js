@@ -7,7 +7,7 @@ const allowedOrigins = (process.env.FRONTEND_ORIGINS || 'http://localhost:5173,h
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
-const allowedFlightModes = (process.env.ALLOWED_FLIGHT_MODES || '')
+const allowedFlightModes = (process.env.ALLOWED_FLIGHT_MODES || 'STABILIZE,ACRO,MANUAL,FBWA,AUTO,GUIDED,LOITER,RTL,TAKEOFF')
   .split(',')
   .map((mode) => mode.trim().toUpperCase())
   .filter(Boolean);
