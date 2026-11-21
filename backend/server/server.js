@@ -14,6 +14,60 @@ const navigation = require('./services/navigasiDrone');
 const safetyAlerts = require('./services/safety_alert_service');
 const tlogReplayService = require('./services/tlog_replay_service');
 
+function crossedWaypoint(previous, current, start, waypoint, radius) {
+  const values = [previous?.lat, previous?.lon, current.lat, current.lon,
+    start?.lat, start?.lon, waypoint.lat, waypoint.lon];
+  if (values.some((value) => value == null || !Number.isFinite(Number(value)))) return false;
+
+  const metersPerDegree = 111320;
+  const latitudeScale = Math.cos(Number(start.lat) * Math.PI / 180);
+  const startX = Number(start.lon) * metersPerDegree * latitudeScale;
+  const startY = Number(start.lat) * metersPerDegree;
+  const legX = (Number(waypoint.lon) - Number(start.lon)) * metersPerDegree * latitudeScale;
+  const legY = (Number(waypoint.lat) - Number(start.lat)) * metersPerDegree;
+  const legLength = Math.hypot(legX, legY);
+  if (legLength < 1) return false;
+
+  const unitX = legX / legLength;
+  const unitY = legY / legLength;
+  const previousX = Number(previous.lon) * metersPerDegree * latitudeScale - startX;
+  const previousY = Number(previous.lat) * metersPerDegree - startY;
+  const currentX = Number(current.lon) * metersPerDegree * latitudeScale - startX;
+  const currentY = Number(current.lat) * metersPerDegree - startY;
+  const previousAlong = previousX * unitX + previousY * unitY;
+  const currentAlong = currentX * unitX + currentY * unitY;
+  if (previousAlong >= legLength || currentAlong < legLength || currentAlong <= previousAlong) return false;
+
+  const fraction = (legLength - previousAlong) / (currentAlong - previousAlong);
+  const crossingX = previousX + (currentX - previousX) * fraction;
+  const crossingY = previousY + (currentY - previousY) * fraction;
+  return Math.abs(crossingX * unitY - crossingY * unitX) <= radius;
+}
+
+function emitNavigationGuidance(io, state, missionId, mission, index) {
+  const waypoint = mission.waypoints[index];
+  if (!waypoint) {
+    io.emit('navigation_guidance', { mission_id: missionId, waypoint: null, distance_m: null, bearing_deg: null });
+    return;
+  }
+  const target = waypoint.command === 20
+    ? { lat: state.home_lat, lon: state.home_lon, alt: 0 }
+    : waypoint;
+  if (![state.lat, state.lon, target.lat, target.lon].every((value) => value != null && Number.isFinite(Number(value)))) {
+    io.emit('navigation_guidance', { mission_id: missionId, waypoint: index, distance_m: null, bearing_deg: null });
+    return;
+  }
+  const distance = navigation.hitungJarakMeter(state.lat, state.lon, target.lat, target.lon);
+  const bearing = navigation.hitungArahBearing(state.lat, state.lon, target.lat, target.lon);
+  const turn = state.heading != null && Number.isFinite(Number(state.heading))
+    ? navigation.hitungSudutBelok(Number(state.heading), bearing)
+    : null;
+  io.emit('navigation_guidance', { mission_id: missionId, waypoint: index,
+    distance_m: Number(distance.toFixed(2)), bearing_deg: Number(bearing.toFixed(2)),
+    altitude_error_meter: state.rel_alt != null && Number.isFinite(Number(state.rel_alt))
+      ? Number(target.alt) - Number(state.rel_alt) : null, turn });
+}
+
 function createApp() {
   const app = express();
   app.disable('x-powered-by');
@@ -69,6 +123,7 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
   let activeMission = null;
   let activeWaypointIndex = 0;
   let waypointReachedAt = null;
+  let previousMissionPosition = null;
   let emergencyTriggered = false;
   // WebSocket meneruskan telemetry ke frontend Fai.
   io.on('connection', (socket) => socket.emit('telemetry', telemetryService.getLatestTelemetry()));
@@ -83,7 +138,7 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
 
     try {
       const mission = missionService.readMission(activeMission);
-      // ArduPilot reserves sequence 0 for Home, so mission waypoint 0 is seq 1.
+      // MAVLink mission upload adds Home at sequence 0 before route waypoints.
       const reachedIndex = sequence - 1;
       if (reachedIndex < activeWaypointIndex || reachedIndex >= mission.waypoints.length) return;
 
@@ -97,27 +152,7 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
         return;
       }
 
-      const state = stateTracker.getState();
-      const waypoint = mission.waypoints[activeWaypointIndex];
-      const target = waypoint.command === 20
-        ? { lat: state.home_lat, lon: state.home_lon, alt: 0 }
-        : waypoint;
-      const coordinates = [state.lat, state.lon, target.lat, target.lon].map(Number);
-      if ([state.lat, state.lon, target.lat, target.lon].every((value) => value != null)
-        && coordinates.every(Number.isFinite)) {
-        const distance = navigation.hitungJarakMeter(...coordinates);
-        const bearing = navigation.hitungArahBearing(...coordinates);
-        const turn = state.heading != null && Number.isFinite(Number(state.heading))
-          ? navigation.hitungSudutBelok(Number(state.heading), bearing)
-          : null;
-        io.emit('navigation_guidance', { mission_id: activeMission, waypoint: activeWaypointIndex,
-          distance_m: Number(distance.toFixed(2)), bearing_deg: Number(bearing.toFixed(2)),
-          altitude_error_meter: Number.isFinite(Number(state.rel_alt)) ? target.alt - Number(state.rel_alt) : null,
-          turn });
-      } else {
-        io.emit('navigation_guidance', { mission_id: activeMission, waypoint: activeWaypointIndex,
-          distance_m: null, bearing_deg: null });
-      }
+      emitNavigationGuidance(io, stateTracker.getState(), activeMission, mission, activeWaypointIndex);
       io.emit('mission_progress', { mission_id: activeMission, stage: 'NAVIGATING_WAYPOINT',
         active_waypoint: activeWaypointIndex, waypoint_count: mission.waypoints.length });
     } catch (error) {
@@ -142,15 +177,18 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
       } else if (waypoint.command === 21) stage = 'LANDING';
       else if (waypoint.command === 22) stage = 'TAKING_OFF';
       else if ([115, 178, 183, 203].includes(waypoint.command)) stage = 'EXECUTING_ACTION';
-      if ([16, 19, 21, 22, 20].includes(waypoint.command)
-        && [state.lat, state.lon, target.lat, target.lon].every((value) => Number.isFinite(Number(value)))) {
+      const hasCoordinates = [state.lat, state.lon, target.lat, target.lon]
+        .every((value) => value != null && Number.isFinite(Number(value)));
+      if ([16, 19, 21, 22, 20].includes(waypoint.command) && hasCoordinates) {
         const distance = navigation.hitungJarakMeter(state.lat, state.lon, target.lat, target.lon);
-        const bearing = navigation.hitungArahBearing(state.lat, state.lon, target.lat, target.lon);
-        const turn = Number.isFinite(Number(state.heading)) ? navigation.hitungSudutBelok(state.heading, bearing) : null;
-        io.emit('navigation_guidance', { mission_id: activeMission, waypoint: activeWaypointIndex,
-          distance_m: Number(distance.toFixed(2)), bearing_deg: Number(bearing.toFixed(2)),
-          altitude_error_meter: Number.isFinite(Number(state.rel_alt)) ? target.alt - Number(state.rel_alt) : null, turn });
-        const reached = distance <= Math.max(2, waypoint.param2 || 5);
+        emitNavigationGuidance(io, state, activeMission, mission, activeWaypointIndex);
+        const radius = Math.max(2, Number(waypoint.param2) || 30);
+        const legStart = activeWaypointIndex === 0
+          ? { lat: state.home_lat, lon: state.home_lon }
+          : mission.waypoints[activeWaypointIndex - 1];
+        const passed = waypoint.command === 16
+          && crossedWaypoint(previousMissionPosition, state, legStart, waypoint, radius);
+        const reached = distance <= radius || passed;
         if (waypoint.command === 19) {
           if (reached) stage = 'EXECUTING_ACTION';
           if (reached && waypointReachedAt === null) waypointReachedAt = Date.now();
@@ -164,14 +202,32 @@ function startServer({ host = config.host, port = config.port, connectRedis = tr
         } else if (reached) activeWaypointIndex += 1;
       } else if (![16, 19, 20, 21, 22].includes(waypoint.command)) activeWaypointIndex += 1;
       if (activeWaypointIndex !== waypoint.seq) waypointReachedAt = null;
+      if (activeWaypointIndex >= mission.waypoints.length) {
+        io.emit('mission_progress', { mission_id: activeMission, stage: 'COMPLETED', active_waypoint: null,
+          waypoint_count: mission.waypoints.length });
+        emitNavigationGuidance(io, state, activeMission, mission, activeWaypointIndex);
+        activeMission = null;
+        return;
+      }
+      if (activeWaypointIndex !== waypoint.seq) {
+        emitNavigationGuidance(io, state, activeMission, mission, activeWaypointIndex);
+      }
       io.emit('mission_progress', { mission_id: activeMission, stage,
         active_waypoint: activeWaypointIndex, waypoint_count: mission.waypoints.length });
+      if (state.lat != null && state.lon != null
+        && Number.isFinite(Number(state.lat)) && Number.isFinite(Number(state.lon))) {
+        previousMissionPosition = { lat: Number(state.lat), lon: Number(state.lon) };
+      }
     } catch (error) { console.error('Gagal menghitung progres misi:', error.message); }
   });
   telemetryService.setMissionStarter((id) => {
     activeMission = Number(id);
     activeWaypointIndex = 0;
     waypointReachedAt = null;
+    const state = stateTracker.getState();
+    previousMissionPosition = state.lat != null && state.lon != null
+      ? { lat: Number(state.lat), lon: Number(state.lon) }
+      : null;
     emergencyTriggered = false;
   });
   telemetryService.setMissionProgressListener((progress) => io.emit('mission_progress', progress));

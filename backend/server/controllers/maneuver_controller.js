@@ -3,6 +3,7 @@ const telemetry = require('../services/telemetry_service');
 const tracker = require('../services/stateTracker');
 const missions = require('../services/mission_service');
 const navigation = require('../services/navigasiDrone');
+const tlogReplayService = require('../services/tlog_replay_service');
 
 function invalid(message, status = 400) {
   const error = new Error(message);
@@ -101,7 +102,9 @@ async function missionCommand(request, response, next) {
     const allowed = new Set(['pause_mission', 'resume_mission', 'rtl', 'land', 'clear_mission']);
     if (!allowed.has(type)) throw invalid('Perintah misi tidak dikenal.');
     if (type === 'rtl' || type === 'land' || type === 'pause_mission' || type === 'resume_mission') requireHeartbeat();
-    return response.json(await telemetry.sendCommand(type, {}));
+    const result = await telemetry.sendCommand(type, {});
+    if (type === 'clear_mission' && result?.ok !== false) tlogReplayService.recordWaypointChange([]);
+    return response.json(result);
   } catch (error) { return next(error); }
 }
 

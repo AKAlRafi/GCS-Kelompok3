@@ -26,6 +26,17 @@ function formatReplayTime(milliseconds) {
   return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`
 }
 
+function getReplayTrail(samples, index) {
+  const trail = samples.slice(0, index + 1)
+  const step = Math.max(1, Math.ceil(trail.length / 2500))
+  return trail.filter((point, pointIndex) => pointIndex % step === 0 || pointIndex === trail.length - 1)
+}
+
+function getReplayTrack(samples) {
+  const step = Math.max(1, Math.ceil(samples.length / 2500))
+  return samples.filter((point, index) => index % step === 0 || index === samples.length - 1)
+}
+
 function App() {
   const [telemetry, setTelemetry] = useState({})
   const [followVehicle, setFollowVehicle] = useState(false)
@@ -52,6 +63,7 @@ function App() {
   const [replaySpeed, setReplaySpeed] = useState(1)
   const [replayMessage, setReplayMessage] = useState('')
   const [replayWaypoints, setReplayWaypoints] = useState([])
+  const [replayWaypointTimeline, setReplayWaypointTimeline] = useState([])
   const [replaySeekVersion, setReplaySeekVersion] = useState(0)
   const replayPositionRef = useRef(0)
   const [activeLog, setActiveLog] = useState({ active: false, id: null })
@@ -108,11 +120,28 @@ function App() {
     setReplayMessage('Loading TLOG…')
     try {
       const data = await apiJson(`/tlogs/${encodeURIComponent(fileName)}/replay`)
+      let route = data.waypoints || []
+      if (!route.length && waypoints.length) route = waypoints
+      if (!route.length && selectedMissionId) {
+        try {
+          const missionData = await apiJson(`/missions/${selectedMissionId}`)
+          route = missionData.mission?.waypoints || []
+        } catch {
+          route = []
+        }
+      }
       setSelectedTlog(fileName)
       setReplayFileName(fileName)
       setReplaySamples(data.samples || [])
       setReplayDuration(data.duration_ms || 0)
-      setReplayWaypoints((data.waypoints || []).map((point, index) => ({ ...point, id: `replay-${index}` })))
+      setReplayWaypoints(route.map((point, index) => ({ ...point, id: `replay-${index}` })))
+      setReplayWaypointTimeline((data.waypoint_timeline || []).map((snapshot) => ({
+        ...snapshot,
+        waypoints: (snapshot.waypoints || []).map((point, index) => ({
+          ...point,
+          id: `replay-${snapshot.offset_ms}-${index}`,
+        })),
+      })))
       replayPositionRef.current = 0
       setReplayPosition(0)
       setReplayMessage(data.samples?.length ? '' : 'TLOG tidak berisi posisi drone.')
@@ -120,14 +149,17 @@ function App() {
       setReplaySamples([])
       setReplayDuration(0)
       setReplayWaypoints([])
+      setReplayWaypointTimeline([])
       setReplayMessage(error.message || 'TLOG gagal dibuka.')
       throw error
     }
-  }, [])
+  }, [selectedMissionId, waypoints])
 
   const stopTlogReplay = useCallback(() => {
     setReplayPlaying(false)
     setReplaySamples([])
+    setReplayWaypoints([])
+    setReplayWaypointTimeline([])
     setReplayDuration(0)
     setReplayFileName('')
     setReplayMessage('')
@@ -312,9 +344,12 @@ function App() {
   }, [])
 
   const startFlightLog = useCallback(async () => {
-    await apiJson('/logs/start', { method: 'POST', body: JSON.stringify({ name: 'flight' }) })
+    await apiJson('/logs/start', { method: 'POST', body: JSON.stringify({
+      name: 'flight',
+      waypoints: waypoints.map(({ lat, lon, alt }) => ({ lat, lon, alt })),
+    }) })
     await Promise.all([loadFlightLogs(), loadTlogFiles()])
-  }, [loadFlightLogs, loadTlogFiles])
+  }, [loadFlightLogs, loadTlogFiles, waypoints])
 
   const stopFlightLog = useCallback(async () => {
     await apiJson('/logs/stop', { method: 'POST' })
@@ -455,9 +490,16 @@ function App() {
   const replayActive = replaySamples.length > 0
   const replayIndex = replayActive ? findSampleIndex(replaySamples, replayPosition) : -1
   const displayTelemetry = replayActive ? replaySamples[replayIndex] : telemetry
-  const displayTrail = replayActive
-    ? replaySamples.slice(Math.max(0, replayIndex - 499), replayIndex + 1)
-    : flightTrail
+  const displayTrail = replayActive ? getReplayTrail(replaySamples, replayIndex) : flightTrail
+  const activeRouteSnapshot = replayWaypointTimeline
+    .filter((snapshot) => Number(snapshot.offset_ms) <= replayPosition)
+    .at(-1)
+  const displayWaypoints = replayActive
+    ? activeRouteSnapshot?.waypoints || replayWaypoints
+    : waypoints
+  const replayBounds = replayActive
+    ? [...replaySamples, ...replayWaypointTimeline.flatMap((snapshot) => snapshot.waypoints), ...replayWaypoints]
+    : []
   const rawHeading = displayTelemetry.heading ?? displayTelemetry.yaw
   const heading = Number(rawHeading)
   const mapBearing = followVehicle && rawHeading != null && Number.isFinite(heading)
@@ -537,9 +579,12 @@ function App() {
           followVehicle={followVehicle}
           mapBearing={mapBearing}
           addingWaypoint={addingWaypoint && !replayActive}
-          waypoints={replayActive ? replayWaypoints : waypoints}
+          waypoints={displayWaypoints}
           home={{ lat: displayTelemetry.home_lat, lon: displayTelemetry.home_lon }}
           flightTrail={displayTrail}
+          replayTrack={replayActive ? getReplayTrack(replaySamples) : []}
+          replayBounds={replayBounds}
+          replayBoundsKey={replayActive ? replayFileName : ''}
           showHome={homeVisible}
           showRoute={routeVisible}
           showTrail={trailVisible}

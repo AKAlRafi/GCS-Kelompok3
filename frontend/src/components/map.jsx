@@ -29,17 +29,17 @@ function makePointIcon(label, type = 'waypoint') {
   })
 }
 
-function CenterOnVehicle({ position, follow }) {
+function CenterOnVehicle({ position, follow, replayActive }) {
   const map = useMap()
   const centered = useRef(false)
 
   useEffect(() => {
-    if (!position) return
+    if (!position || replayActive) return
     if (!centered.current || follow) {
       map.setView(position, Math.max(map.getZoom(), follow ? 17 : 15), { animate: false })
       centered.current = true
     }
-  }, [map, position, follow])
+  }, [map, position, follow, replayActive])
 
   return null
 }
@@ -60,6 +60,20 @@ function ResetMapView({ resetToken }) {
   useEffect(() => {
     if (resetToken > 0) map.setView(DEFAULT_CENTER, 15, { animate: true })
   }, [map, resetToken])
+
+  return null
+}
+
+function FitReplayBounds({ enabled, replayKey, points }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!enabled || !points.length) return
+    const positions = points.map(toPosition).filter(Boolean)
+    if (!positions.length) return
+    const bounds = L.latLngBounds(positions)
+    if (bounds.isValid()) map.fitBounds(bounds.pad(0.12), { animate: false, maxZoom: 17 })
+  }, [enabled, map, replayKey])
 
   return null
 }
@@ -128,6 +142,9 @@ export default function Map({
   waypoints = [],
   home,
   flightTrail = [],
+  replayTrack = [],
+  replayBounds = [],
+  replayBoundsKey = '',
   showHome = true,
   showRoute = true,
   showTrail = true,
@@ -139,16 +156,19 @@ export default function Map({
   const vehicleIcon = useMemo(() => makeVehicleIcon(heading), [heading])
   const routePositions = waypoints.map(toPosition).filter(Boolean)
   const trailPositions = flightTrail.map(toPosition).filter(Boolean)
+  const replayTrackPositions = replayTrack.map(toPosition).filter(Boolean)
 
   return (
     <MapContainer className={`gcs-map${addingWaypoint ? ' is-adding-waypoint' : ''}`} center={DEFAULT_CENTER} zoom={15} style={{ height: '100%', width: '100%' }}>
-      <CenterOnVehicle position={position} follow={followVehicle} />
+      <CenterOnVehicle position={position} follow={followVehicle} replayActive={Boolean(replayBoundsKey)} />
       <ResetMapView resetToken={resetToken} />
+      <FitReplayBounds enabled={Boolean(replayBoundsKey)} replayKey={replayBoundsKey} points={replayBounds} />
       <RotateMap enabled={followVehicle} bearing={mapBearing} />
       <MapClickHandler enabled={addingWaypoint} onMapClick={onMapClick} />
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-      {showTrail && trailPositions.length > 1 && <Polyline positions={trailPositions} pathOptions={{ color: 'var(--panel)', weight: 3, opacity: 0.6, dashArray: '6 7' }} />}
-      {showRoute && routePositions.length > 1 && <Polyline positions={routePositions} pathOptions={{ color: 'var(--panel)', weight: 4, opacity: 0.95 }} />}
+      {showTrail && replayTrackPositions.length > 1 && <Polyline positions={replayTrackPositions} pathOptions={{ color: '#64748b', weight: 4, opacity: 0.9, dashArray: '7 6' }} />}
+      {showTrail && trailPositions.length > 1 && <Polyline positions={trailPositions} pathOptions={{ color: '#06b6d4', weight: 5, opacity: 1 }} />}
+      {showRoute && routePositions.length > 1 && <Polyline positions={routePositions} pathOptions={{ color: '#e7c021', weight: 4, opacity: 0.95 }} />}
       {showHome && homePosition && <Marker position={homePosition} icon={makePointIcon('H', 'home')} />}
       {waypoints.map((point, index) => {
         const pointPosition = toPosition(point)

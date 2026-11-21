@@ -15,6 +15,20 @@ function listTlogs() {
   return database.syncTlogFiles();
 }
 
+function setWaypoints(fileName, waypoints) {
+  listTlogs();
+  return database.setTlogWaypoints(fileName, waypoints);
+}
+
+function recordWaypointChange(waypoints) {
+  const activeTlog = listTlogs().find((file) => file.recording);
+  if (!activeTlog) return false;
+  const record = database.getTlogFile(activeTlog.file_name);
+  const startedAt = Date.parse(record?.started_at);
+  if (!Number.isFinite(startedAt)) return false;
+  return database.appendTlogWaypointSnapshot(activeTlog.file_name, Date.now() - startedAt, waypoints);
+}
+
 function getDownloadPath(fileName) {
   const filePath = resolveTlog(fileName);
   const file = database.getTlogFile(fileName);
@@ -57,7 +71,12 @@ async function loadReplay(fileName) {
       timeout: 120000,
       maxBuffer: 32 * 1024 * 1024,
     });
-    return JSON.parse(stdout);
+    const waypointTimeline = database.getTlogWaypointTimeline(fileName);
+    return {
+      ...JSON.parse(stdout),
+      waypoints: waypointTimeline[0]?.waypoints || database.getTlogWaypoints(fileName),
+      waypoint_timeline: waypointTimeline,
+    };
   } catch (cause) {
     const error = new Error(cause.killed
       ? 'Pembacaan TLOG melewati batas waktu.'
@@ -67,4 +86,4 @@ async function loadReplay(fileName) {
   }
 }
 
-module.exports = { listTlogs, loadReplay, getDownloadPath };
+module.exports = { listTlogs, setWaypoints, recordWaypointChange, loadReplay, getDownloadPath };

@@ -41,6 +41,8 @@ database.exec(`
     file_path TEXT NOT NULL,
     recording INTEGER NOT NULL DEFAULT 0,
     file_size INTEGER NOT NULL DEFAULT 0,
+    waypoints_json TEXT,
+    waypoint_timeline_json TEXT,
     modified_at TEXT,
     started_at TEXT NOT NULL,
     ended_at TEXT,
@@ -58,6 +60,14 @@ database.exec(`
   CREATE INDEX IF NOT EXISTS idx_flight_jsonl_session_time
     ON flight_jsonl(session_id, recorded_at);
 `);
+
+const tlogColumns = new Set(database.pragma('table_info(flight_tlogs)').map((column) => column.name));
+if (!tlogColumns.has('waypoints_json')) {
+  database.exec('ALTER TABLE flight_tlogs ADD COLUMN waypoints_json TEXT');
+}
+if (!tlogColumns.has('waypoint_timeline_json')) {
+  database.exec('ALTER TABLE flight_tlogs ADD COLUMN waypoint_timeline_json TEXT');
+}
 
 // Keep old TLOG file references, but discard the old permanent JSONL telemetry cache.
 const oldTables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name));
@@ -166,6 +176,56 @@ function upsertTlogFile({ name, fileName, filePath, startedAt, fileSize, modifie
       END
   `).run(name, fileName, filePath, Number(recording), fileSize, modifiedAt, startedAt,
     Number(recording), modifiedAt);
+}
+
+function setTlogWaypoints(fileName, waypoints) {
+  const serialized = JSON.stringify(waypoints);
+  const timeline = JSON.stringify([{ offset_ms: 0, waypoints }]);
+  return database.prepare(`
+    UPDATE flight_tlogs
+    SET waypoints_json = ?, waypoint_timeline_json = ?
+    WHERE file_name = ?
+  `).run(serialized, timeline, fileName).changes > 0;
+}
+
+function appendTlogWaypointSnapshot(fileName, offsetMs, waypoints) {
+  const row = database.prepare('SELECT waypoint_timeline_json FROM flight_tlogs WHERE file_name = ?').get(fileName);
+  if (!row) return false;
+  let timeline = [];
+  try { timeline = JSON.parse(row.waypoint_timeline_json || '[]'); }
+  catch {}
+  const previous = timeline[timeline.length - 1];
+  if (previous && JSON.stringify(previous.waypoints) === JSON.stringify(waypoints)) return true;
+  timeline.push({ offset_ms: Math.max(0, Math.round(offsetMs)), waypoints });
+  const serialized = JSON.stringify(waypoints);
+  database.prepare(`
+    UPDATE flight_tlogs
+    SET waypoints_json = ?, waypoint_timeline_json = ?
+    WHERE file_name = ?
+  `).run(serialized, JSON.stringify(timeline), fileName);
+  return true;
+}
+
+function getTlogWaypoints(fileName) {
+  const row = database.prepare('SELECT waypoints_json FROM flight_tlogs WHERE file_name = ?').get(fileName);
+  if (!row?.waypoints_json) return [];
+  try {
+    const waypoints = JSON.parse(row.waypoints_json);
+    return Array.isArray(waypoints) ? waypoints : [];
+  } catch {
+    return [];
+  }
+}
+
+function getTlogWaypointTimeline(fileName) {
+  const row = database.prepare('SELECT waypoint_timeline_json FROM flight_tlogs WHERE file_name = ?').get(fileName);
+  if (!row?.waypoint_timeline_json) return [];
+  try {
+    const timeline = JSON.parse(row.waypoint_timeline_json);
+    return Array.isArray(timeline) ? timeline : [];
+  } catch {
+    return [];
+  }
 }
 
 function syncTlogFiles() {
@@ -302,6 +362,10 @@ module.exports = {
   upsertTlogFile,
   syncTlogFiles,
   getTlogFile,
+  setTlogWaypoints,
+  appendTlogWaypointSnapshot,
+  getTlogWaypoints,
+  getTlogWaypointTimeline,
   finishFlightLog,
   listFlightLogs,
   getFlightLog,
