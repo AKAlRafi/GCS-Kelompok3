@@ -30,17 +30,15 @@ class TlogService:
 
     def is_recording(self) -> bool:
         with self._lock:
-            return self._file is not None and not self._file.closed
+            return self._row_id is not None
 
     def start(self) -> str:
         with self._lock:
             self._close_unlocked()
-            os.makedirs(self.log_dir, exist_ok=True)
             filename = datetime.now().strftime("flight_%Y-%m-%d_%H-%M-%S.tlog")
-            self.current_path = os.path.join(self.log_dir, filename)
-            self._file = open(self.current_path, "wb")
+            self.current_path = filename
             self._db_open(filename)
-            return self.current_path
+            return filename
 
     def write_msg(self, msg) -> None:
         if msg is None or msg.get_type() == "BAD_DATA":
@@ -48,21 +46,20 @@ class TlogService:
         raw_bytes = msg.get_msgbuf()
         if not raw_bytes:
             return
-
-        timestamp_us = int(time.time() * 1_000_000)
-        header = struct.pack(">Q", timestamp_us)
-
+        data = {k: (None if isinstance(v, float) and not math.isfinite(v) else v)
+                for k, v in msg.to_dict().items()}
+        row = (int(time.time() * 1_000_000), msg.get_msgId(), msg.get_type(), json.dumps(data, default=str))
         with self._lock:
-            if self._file is not None and not self._file.closed:
-                self._file.write(header)
-                self._file.write(raw_bytes)
-                self._file.flush()
-                self._count += 1
-                self._size += len(header) + len(raw_bytes)
-                now = time.monotonic()
-                if now - self._last_db_update >= self.db_interval:
-                    self._last_db_update = now
-                    self._db_update()
+            if self._row_id is None:
+                return
+            self._buffer.append((self._row_id, *row))
+            self._count += 1
+            self._size += 8 + len(raw_bytes)
+            now = time.monotonic()
+            if now - self._last_db_update >= self.db_interval:
+                self._last_db_update = now
+                self._db_flush()
+                self._db_update()
 
     def list_tlogs(self, limit: int = 50) -> list[dict]:
         """Newest tlogs first. Empty list if the database cannot be read."""
@@ -80,11 +77,8 @@ class TlogService:
             self._close_unlocked()
 
     def _close_unlocked(self) -> None:
-        if self._file is not None and not self._file.closed:
-            self._file.flush()
-            self._file.close()
+        self._db_flush()
         self._db_update()
-        self._file = None
         self._row_id = None
         self.current_path = None
 
@@ -94,6 +88,13 @@ class TlogService:
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
             self._db = sqlite3.connect(self.db_path, check_same_thread=False)
             self._db.row_factory = sqlite3.Row
+            self._db.execute("PRAGMA journal_mode=WAL")
+            self._db.execute(
+                "CREATE TABLE IF NOT EXISTS tlog_messages ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, tlog_id INTEGER NOT NULL, ts_us INTEGER NOT NULL, "
+                "msg_id INTEGER NOT NULL, msg_type TEXT NOT NULL, data TEXT NOT NULL)"
+            )
+            self._db.execute("CREATE INDEX IF NOT EXISTS idx_tlog_messages ON tlog_messages(tlog_id, id)")
             self._db.execute(
                 "CREATE TABLE IF NOT EXISTS tlogs ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, file_name TEXT NOT NULL, file_path TEXT NOT NULL, "
@@ -130,3 +131,23 @@ class TlogService:
             self._db.commit()
         except sqlite3.Error as e:
             logger.warning(f"Tlog database update failed: {e}")
+    
+    def flush(self) -> None:
+        """Write buffered messages once a second, so the tail is saved even if messages stop arriving."""
+        with self._lock:
+            if self._row_id is not None and time.monotonic() - self._last_db_update >= self.db_interval:
+                self._db_flush()
+
+    def _db_flush(self) -> None:
+        if not self._buffer or self._db is None:
+            return
+        try:
+            self._db.executemany(
+                "INSERT INTO tlog_messages (tlog_id, ts_us, msg_id, msg_type, data) VALUES (?, ?, ?, ?, ?)",
+                self._buffer,
+            )
+            self._db.commit()
+            self._buffer = []
+        except sqlite3.Error as e:
+            logger.warning(f"Tlog message write failed: {e}")
+            del self._buffer[:-MAX_BUFFER]      # keep the newest

@@ -236,6 +236,8 @@ def run() -> None:
             # Check and execute pending commands from Redis
             process_commands(redis_svc, command_svc, mission_svc, calibration_svc, param_svc)
 
+            tlog_svc.flush()
+
             now_m = time.monotonic()
             if "home_lat" not in state and now_m - last_home_req >= HOME_REQUEST_INTERVAL:
                 last_home_req = now_m
