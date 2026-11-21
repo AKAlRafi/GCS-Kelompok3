@@ -27,7 +27,7 @@ function directionLabel(value) {
   return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((((angle % 360) + 360) % 360) / 45) % 8]
 }
 
-export default function Hud({ telemetry = {}, mapBearing = 0, followVehicle = false, onToggleFollow }) {
+export default function Hud({ telemetry = {}, followVehicle = false, onToggleFollow }) {
   const roll = Number(telemetry.roll)
   const pitch = Number(telemetry.pitch)
   const heading = Number(telemetry.heading ?? telemetry.yaw)

@@ -64,17 +64,10 @@ export default function DistanceToWaypoint({ waypoints = [] }) {
 
     const waypointsKey = JSON.stringify(validWaypoints);
 
-    // Reset hanya jika koordinat waypoint benar-benar berubah (bukan saat parent re-render)
     useEffect(() => {
         activeIndexRef.current = 0;
         minDistanceRef.current = Infinity;
         holdRef.current = false;
-        setActiveIndex(0);
-        setFinished(false);
-        setDistance(null);
-    }, [waypointsKey]);
-
-    useEffect(() => {
         let holdTimer;
 
         const onTelemetry = (data) => {
@@ -132,7 +125,7 @@ export default function DistanceToWaypoint({ waypoints = [] }) {
         socket.off('telemetry', onTelemetry);
         socket.off('waypoint_reached', onWpReached);
         };
-    }, [waypointsKey]);
+    }, [waypointsKey, validWaypoints]);
 
     let text = 'Jarak ke WP-1: --';
     if (finished && validWaypoints.length > 0) {

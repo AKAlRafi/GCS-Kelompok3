@@ -1,6 +1,5 @@
 const telemetryService = require('../services/telemetry_service');
 const { validateCommand } = require('../services/command_validation_service');
-const tlogReplayService = require('../services/tlog_replay_service');
 
 function getConnectionStatus(request, response) {
   response.json(telemetryService.getConnectionStatus());
@@ -38,7 +37,6 @@ async function sendAndWait(type, payload, response, next) {
       error.code = 'COMMAND_REJECTED';
       throw error;
     }
-    if (type === 'upload_mission') tlogReplayService.recordWaypointChange(payload.waypoints || []);
     return response.json(acknowledgement);
   } catch (error) {
     error.status ||= ({

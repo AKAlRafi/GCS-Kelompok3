@@ -6,7 +6,6 @@ const config = require('../config');
 const tracker = require('./stateTracker');
 const nav = require('./navigasiDrone');
 const telemetry = require('./telemetry_service');
-const tlogReplayService = require('./tlog_replay_service');
 
 const SUPPORTED_COMMANDS = new Set([16, 19, 20, 21, 22, 115, 178, 183, 203]);
 const NAV_COMMANDS = new Set([16, 19, 21, 22]);
@@ -192,7 +191,6 @@ async function uploadMissionToDrone(id) {
   const waypoints = rows.map(({ seq, frame, command, current, autocontinue, param1, param2, param3, param4, lat, lon, alt }) =>
     ({ seq, frame, command, current, autocontinue, param1, param2, param3, param4, lat, lon, alt }));
   const ack = await telemetry.sendCommand('upload_mission', { waypoints });
-  if (ack?.ok !== false) tlogReplayService.recordWaypointChange(waypoints);
   return { ...ack, mission_id: Number(id), waypoint_count: waypoints.length };
 }
 

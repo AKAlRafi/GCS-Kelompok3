@@ -73,7 +73,7 @@ function FitReplayBounds({ enabled, replayKey, points }) {
     if (!positions.length) return
     const bounds = L.latLngBounds(positions)
     if (bounds.isValid()) map.fitBounds(bounds.pad(0.12), { animate: false, maxZoom: 17 })
-  }, [enabled, map, replayKey])
+  }, [enabled, map, replayKey, points])
 
   return null
 }

@@ -1,6 +1,5 @@
 const flightLogs = require('../services/flight_log_service');
 const telemetryService = require('../services/telemetry_service');
-const tlogReplayService = require('../services/tlog_replay_service');
 
 function list(request, response) {
   response.json(flightLogs.listLogs());
@@ -19,24 +18,11 @@ async function start(request, response, next) {
     if (flightLogs.getActiveLog().active) {
       return response.status(409).json({ ok: false, error: 'Flight log sedang berjalan.' });
     }
-    const requestedWaypoints = request.body?.waypoints;
-    if (requestedWaypoints !== undefined && (!Array.isArray(requestedWaypoints) || requestedWaypoints.length > 1000)) {
-      return response.status(400).json({ ok: false, error: 'Daftar waypoint untuk replay tidak valid.' });
-    }
-    const waypoints = (requestedWaypoints || []).map((point) => ({
-      lat: Number(point.lat), lon: Number(point.lon), alt: Number(point.alt),
-    }));
-    if (waypoints.some((point) => !Number.isFinite(point.lat) || point.lat < -90 || point.lat > 90
-      || !Number.isFinite(point.lon) || point.lon < -180 || point.lon > 180
-      || !Number.isFinite(point.alt))) {
-      return response.status(400).json({ ok: false, error: 'Koordinat waypoint untuk replay tidak valid.' });
-    }
     const tlog = await telemetryService.sendRecordingCommand('start_recording');
     if (!tlog.ok) throw new Error(tlog.error || 'TLOG gagal dimulai.');
     try {
       const log = flightLogs.startLog(name);
       const tlogName = require('node:path').basename(tlog.file);
-      tlogReplayService.setWaypoints(tlogName, waypoints);
       response.status(201).json({ ...log, tlog: tlogName });
     } catch (error) {
       await telemetryService.sendRecordingCommand('stop_recording');
