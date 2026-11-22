@@ -63,24 +63,37 @@ Semua pengaturan dibaca dari environment variable (`config.py`).
 
 ```
 mavlink_engine/
+│
 ├── __init__.py
-├── main.py              # loop utama dan pembagian perintah
-├── config.py            # pengaturan
+├── config.py
+├── main.py
 ├── requirements.txt
-├── services/
-│   ├── __init__.py
-│   ├── mavlink_service.py      # koneksi dan pembacaan pesan
-│   ├── command_service.py      # arm, mode, takeoff, land, RTL, dan lainnya
-│   ├── mission_service.py      # upload, download, hapus misi
-│   ├── parameter_service.py    # parameter flight controller
-│   ├── calibration_service.py  # kalibrasi sensor
-│   ├── tlog_service.py         # rekaman TLOG
-│   └── redis_service.py        # publish dan terima lewat Redis
+│
 ├── parsers/
 │   ├── __init__.py
-│   ├── telemetry_parser.py     # pesan MAVLink -> JSON telemetri
-│   └── mission_parser.py       # item misi -> dict
-└── tests/                      # satu file tes per service
+│   ├── mission_parser.py
+│   └── telemetry_parser.py
+│
+├── services/
+│   ├── __init__.py
+│   ├── calibration_service.py
+│   ├── command_service.py
+│   ├── mavlink_service.py
+│   ├── mission_service.py
+│   ├── parameter_service.py
+│   ├── redis_service.py
+│   └── tlog_service.py
+│
+└── tests/
+    ├── test_calibration_service.py
+    ├── test_command_service.py
+    ├── test_main.py
+    ├── test_mavlink_service.py
+    ├── test_mission_service.py
+    ├── test_parameter_service.py
+    ├── test_redis_service.py
+    ├── test_telemetry_parser.py
+    └── test_tlog_service.py
 ```
 
 Setiap file di `services/` berisi satu kelas dengan satu tugas. `main.py` membuat objek-objek itu dan menjalankan loop. `parsers/` berisi fungsi biasa tanpa state.
