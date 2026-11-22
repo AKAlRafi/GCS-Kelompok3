@@ -24,7 +24,7 @@ pip install -r requirements.txt
 Jalankan dari folder **di atas** `mavlink_engine/`, sebagai modul:
 
 ```bash
-python -m mavlink_engine.main
+python3 -m mavlink_engine.main
 ```
 
 Contoh untuk SITL, dengan perintah dinyalakan:
