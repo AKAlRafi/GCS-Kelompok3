@@ -29,4 +29,6 @@ dist-ssr
 .venv
 Thumbs.db
 
-/backend/
+/backend/*
+!/backend/mavlink_engine/
+!/backend/mavlink_engine/**
