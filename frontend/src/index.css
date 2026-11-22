@@ -1,0 +1,45 @@
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Ethnocentric";
+  src: url("./assets/fonts/ethnocentric-italic.otf") format("opentype");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --panel: #131c27;
+  --border: #e7c021;
+  --text: #e7c021;
+  --muted: #8a99ab;
+  --accent: #e7c021;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+}
+body {
+  overflow: hidden;
+  color: #eef4ff;
+  background: #070d18;
+  font-family: "JetBrains Mono", monospace;
+  -webkit-font-smoothing: antialiased;
+}
+button,
+select {
+  font: inherit;
+}

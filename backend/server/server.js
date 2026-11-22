@@ -1,0 +1,326 @@
+const path = require('node:path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const http = require('node:http');
+const { Server } = require('socket.io');
+const config = require('./config');
+const database = require('./db');
+const apiRoutes = require('./routes');
+const telemetryService = require('./services/telemetry_service');
+const missionService = require('./services/mission_service');
+const stateTracker = require('./services/stateTracker');
+const navigation = require('./services/navigasiDrone');
+const safetyAlerts = require('./services/safety_alert_service');
+const tlogReplayService = require('./services/tlog_replay_service');
+
+function crossedWaypoint(previous, current, start, waypoint, radius) {
+  const values = [previous?.lat, previous?.lon, current.lat, current.lon,
+    start?.lat, start?.lon, waypoint.lat, waypoint.lon];
+  if (values.some((value) => value == null || !Number.isFinite(Number(value)))) return false;
+
+  const metersPerDegree = 111320;
+  const latitudeScale = Math.cos(Number(start.lat) * Math.PI / 180);
+  const startX = Number(start.lon) * metersPerDegree * latitudeScale;
+  const startY = Number(start.lat) * metersPerDegree;
+  const legX = (Number(waypoint.lon) - Number(start.lon)) * metersPerDegree * latitudeScale;
+  const legY = (Number(waypoint.lat) - Number(start.lat)) * metersPerDegree;
+  const legLength = Math.hypot(legX, legY);
+  if (legLength < 1) return false;
+
+  const unitX = legX / legLength;
+  const unitY = legY / legLength;
+  const previousX = Number(previous.lon) * metersPerDegree * latitudeScale - startX;
+  const previousY = Number(previous.lat) * metersPerDegree - startY;
+  const currentX = Number(current.lon) * metersPerDegree * latitudeScale - startX;
+  const currentY = Number(current.lat) * metersPerDegree - startY;
+  const previousAlong = previousX * unitX + previousY * unitY;
+  const currentAlong = currentX * unitX + currentY * unitY;
+  if (previousAlong >= legLength || currentAlong < legLength || currentAlong <= previousAlong) return false;
+
+  const fraction = (legLength - previousAlong) / (currentAlong - previousAlong);
+  const crossingX = previousX + (currentX - previousX) * fraction;
+  const crossingY = previousY + (currentY - previousY) * fraction;
+  return Math.abs(crossingX * unitY - crossingY * unitX) <= radius;
+}
+
+function emitNavigationGuidance(io, state, missionId, mission, index) {
+  const waypoint = mission.waypoints[index];
+  if (!waypoint) {
+    io.emit('navigation_guidance', { mission_id: missionId, waypoint: null, distance_m: null, bearing_deg: null });
+    return;
+  }
+  const target = waypoint.command === 20
+    ? { lat: state.home_lat, lon: state.home_lon, alt: 0 }
+    : waypoint;
+  if (![state.lat, state.lon, target.lat, target.lon].every((value) => value != null && Number.isFinite(Number(value)))) {
+    io.emit('navigation_guidance', { mission_id: missionId, waypoint: index, distance_m: null, bearing_deg: null });
+    return;
+  }
+  const distance = navigation.hitungJarakMeter(state.lat, state.lon, target.lat, target.lon);
+  const bearing = navigation.hitungArahBearing(state.lat, state.lon, target.lat, target.lon);
+  const turn = state.heading != null && Number.isFinite(Number(state.heading))
+    ? navigation.hitungSudutBelok(Number(state.heading), bearing)
+    : null;
+  io.emit('navigation_guidance', { mission_id: missionId, waypoint: index,
+    distance_m: Number(distance.toFixed(2)), bearing_deg: Number(bearing.toFixed(2)),
+    altitude_error_meter: state.rel_alt != null && Number.isFinite(Number(state.rel_alt))
+      ? Number(target.alt) - Number(state.rel_alt) : null, turn });
+}
+
+function createApp() {
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(express.raw({ type: 'multipart/form-data', limit: '2mb' }));
+  app.use(express.text({ type: ['text/plain', 'application/x-qgroundcontrol'], limit: '2mb' }));
+  app.use(express.json({ limit: '1mb', strict: true }));
+  app.use((request, response, next) => {
+    const origin = request.get('origin');
+    if (origin && !config.allowedOrigins.includes(origin)) {
+      return response.status(403).json({ ok: false, error: 'Origin tidak diizinkan.' });
+    }
+    if (origin) {
+      response.set('Access-Control-Allow-Origin', origin);
+      response.set('Vary', 'Origin');
+      response.set('Access-Control-Allow-Credentials', 'true');
+    }
+    response.set('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    response.set('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    if (request.method === 'OPTIONS') return response.sendStatus(204);
+    if (config.apiToken) {
+      const token = request.get('authorization')?.replace(/^Bearer\s+/i, '');
+      if (token !== config.apiToken) return response.status(401).json({ ok: false, error: 'Token API tidak valid.' });
+    }
+    next();
+  });
+  app.get('/', (request, response) => response.json({ ok: true, service: 'gcs-backend' }));
+  app.use('/api', apiRoutes);
+  app.use((request, response) => response.status(404).json({ ok: false, error: 'Endpoint tidak ditemukan.' }));
+  app.use((error, request, response, next) => {
+    if (response.headersSent) return next(error);
+    const status = error.status || (error.type === 'entity.parse.failed' ? 400 : 500);
+    console.error('Permintaan API gagal:', error.message);
+    response.status(status).json({ ok: false, error: status === 500 ? 'Terjadi kesalahan server.' : error.message,
+      ...(error.code ? { code: error.code } : {}) });
+  });
+  return app;
+}
+
+function startServer({ host = config.host, port = config.port, connectRedis = true } = {}) {
+  const app = createApp();
+  const httpServer = http.createServer(app);
+  const io = new Server(httpServer, {
+    cors: { origin: config.allowedOrigins, methods: ['GET', 'POST'], credentials: true }
+  });
+  io.use((socket, next) => {
+    if (config.apiToken && socket.handshake.auth?.token !== config.apiToken) {
+      return next(new Error('Token API tidak valid.'));
+    }
+    next();
+  });
+  let stopping = false;
+  let connecting = false;
+  let activeMission = null;
+  let activeWaypointIndex = 0;
+  let waypointReachedAt = null;
+  let previousMissionPosition = null;
+  let emergencyTriggered = false;
+  // WebSocket meneruskan telemetry ke frontend Fai.
+  io.on('connection', (socket) => socket.emit('telemetry', telemetryService.getLatestTelemetry()));
+  telemetryService.setTelemetryListener((telemetry) => io.emit('telemetry', telemetry));
+  telemetryService.setCalibrationListener((event) => io.emit('calibration', event));
+  telemetryService.setWaypointReachedListener((event) => {
+    io.emit('waypoint_reached', event);
+    if (!activeMission) return;
+
+    const sequence = Number(event?.seq);
+    if (!Number.isInteger(sequence) || sequence < 1) return;
+
+    try {
+      const mission = missionService.readMission(activeMission);
+      // MAVLink mission upload adds Home at sequence 0 before route waypoints.
+      const reachedIndex = sequence - 1;
+      if (reachedIndex < activeWaypointIndex || reachedIndex >= mission.waypoints.length) return;
+
+      activeWaypointIndex = reachedIndex + 1;
+      waypointReachedAt = null;
+      if (activeWaypointIndex >= mission.waypoints.length) {
+        io.emit('mission_progress', { mission_id: activeMission, stage: 'COMPLETED', active_waypoint: null,
+          waypoint_count: mission.waypoints.length });
+        io.emit('navigation_guidance', { mission_id: activeMission, waypoint: null, distance_m: null, bearing_deg: null });
+        activeMission = null;
+        return;
+      }
+
+      emitNavigationGuidance(io, stateTracker.getState(), activeMission, mission, activeWaypointIndex);
+      io.emit('mission_progress', { mission_id: activeMission, stage: 'NAVIGATING_WAYPOINT',
+        active_waypoint: activeWaypointIndex, waypoint_count: mission.waypoints.length });
+    } catch (error) {
+      console.error('Gagal memperbarui waypoint aktif:', error.message);
+    }
+  });
+  stateTracker.setStateListener((state) => {
+    if (!activeMission) return;
+    try {
+      const mission = missionService.readMission(activeMission);
+      const waypoint = mission.waypoints[activeWaypointIndex];
+      if (!waypoint) {
+        io.emit('mission_progress', { mission_id: activeMission, stage: 'COMPLETED', active_waypoint: null });
+        activeMission = null;
+        return;
+      }
+      let target = waypoint;
+      let stage = 'NAVIGATING_WAYPOINT';
+      if (waypoint.command === 20) {
+        target = { lat: state.home_lat, lon: state.home_lon, alt: 0 };
+        stage = 'RETURNING_HOME';
+      } else if (waypoint.command === 21) stage = 'LANDING';
+      else if (waypoint.command === 22) stage = 'TAKING_OFF';
+      else if ([115, 178, 183, 203].includes(waypoint.command)) stage = 'EXECUTING_ACTION';
+      const hasCoordinates = [state.lat, state.lon, target.lat, target.lon]
+        .every((value) => value != null && Number.isFinite(Number(value)));
+      if ([16, 19, 21, 22, 20].includes(waypoint.command) && hasCoordinates) {
+        const distance = navigation.hitungJarakMeter(state.lat, state.lon, target.lat, target.lon);
+        emitNavigationGuidance(io, state, activeMission, mission, activeWaypointIndex);
+        const radius = Math.max(2, Number(waypoint.param2) || 30);
+        const legStart = activeWaypointIndex === 0
+          ? { lat: state.home_lat, lon: state.home_lon }
+          : mission.waypoints[activeWaypointIndex - 1];
+        const passed = waypoint.command === 16
+          && crossedWaypoint(previousMissionPosition, state, legStart, waypoint, radius);
+        const reached = distance <= radius || passed;
+        if (waypoint.command === 19) {
+          if (reached) stage = 'EXECUTING_ACTION';
+          if (reached && waypointReachedAt === null) waypointReachedAt = Date.now();
+          if (waypointReachedAt !== null && Date.now() - waypointReachedAt >= Math.max(0, waypoint.param1) * 1000) activeWaypointIndex += 1;
+        } else if (waypoint.command === 21) {
+          if (state.armed === false || Number(state.rel_alt) <= 0.5) activeWaypointIndex += 1;
+        } else if (waypoint.command === 22) {
+          if (reached && Number(state.rel_alt) >= waypoint.alt - 1) activeWaypointIndex += 1;
+        } else if (waypoint.command === 20) {
+          if ((reached && Number(state.rel_alt) <= 1) || state.armed === false) activeWaypointIndex += 1;
+        } else if (reached) activeWaypointIndex += 1;
+      } else if (![16, 19, 20, 21, 22].includes(waypoint.command)) activeWaypointIndex += 1;
+      if (activeWaypointIndex !== waypoint.seq) waypointReachedAt = null;
+      if (activeWaypointIndex >= mission.waypoints.length) {
+        io.emit('mission_progress', { mission_id: activeMission, stage: 'COMPLETED', active_waypoint: null,
+          waypoint_count: mission.waypoints.length });
+        emitNavigationGuidance(io, state, activeMission, mission, activeWaypointIndex);
+        activeMission = null;
+        return;
+      }
+      if (activeWaypointIndex !== waypoint.seq) {
+        emitNavigationGuidance(io, state, activeMission, mission, activeWaypointIndex);
+      }
+      io.emit('mission_progress', { mission_id: activeMission, stage,
+        active_waypoint: activeWaypointIndex, waypoint_count: mission.waypoints.length });
+      if (state.lat != null && state.lon != null
+        && Number.isFinite(Number(state.lat)) && Number.isFinite(Number(state.lon))) {
+        previousMissionPosition = { lat: Number(state.lat), lon: Number(state.lon) };
+      }
+    } catch (error) { console.error('Gagal menghitung progres misi:', error.message); }
+  });
+  telemetryService.setMissionStarter((id) => {
+    activeMission = Number(id);
+    activeWaypointIndex = 0;
+    waypointReachedAt = null;
+    const state = stateTracker.getState();
+    previousMissionPosition = state.lat != null && state.lon != null
+      ? { lat: Number(state.lat), lon: Number(state.lon) }
+      : null;
+    emergencyTriggered = false;
+  });
+  telemetryService.setMissionProgressListener((progress) => io.emit('mission_progress', progress));
+  const failsafeTimer = setInterval(() => {
+    if (!activeMission || emergencyTriggered) return;
+    const state = stateTracker.getState();
+    const heartbeatAge = state.heartbeat_age_ms;
+    const batteryLow = state.battery_percent != null && Number.isFinite(Number(state.battery_percent))
+      && Number(state.battery_percent) <= config.criticalBatteryPercent;
+    const heartbeatLost = heartbeatAge === null || heartbeatAge < 0 || heartbeatAge > 5000;
+    if (!batteryLow && !heartbeatLost) return;
+    emergencyTriggered = true;
+    const reason = batteryLow ? 'BATERAI_KRITIS' : 'HEARTBEAT_HILANG';
+    io.emit('failsafe_warning', { mission_id: activeMission, severity: 'CRITICAL', reason,
+      message: batteryLow ? 'Baterai kritis; meminta RTL otomatis.' : 'Heartbeat hilang lebih dari 5 detik; meminta RTL otomatis.' });
+    void telemetryService.sendCommand('rtl', {}).catch((error) => console.error('Perintah failsafe RTL gagal dikirim:', error.message));
+  }, 500);
+  failsafeTimer.unref();
+  const safetyAlertTimer = setInterval(() => {
+    try {
+      io.emit('safety_alerts', safetyAlerts.buildSafetyAlerts(
+        stateTracker.getState(), database.listParameters(), config.maxMissionDistanceFromHome
+      ));
+    } catch (error) {
+      console.error('Gagal memperbarui safety alert:', error.message);
+    }
+  }, 1000);
+  safetyAlertTimer.unref();
+  const tlogIndexTimer = setInterval(() => {
+    try { tlogReplayService.listTlogs(); }
+    catch (error) { console.error('Gagal memperbarui daftar TLOG:', error.message); }
+  }, 5000);
+  tlogIndexTimer.unref();
+
+  const redisRetry = connectRedis ? setInterval(async () => {
+    if (connecting || telemetryService.getHealth().redis) return;
+    connecting = true;
+    try {
+      await telemetryService.connectTelemetry();
+      console.log(`Terhubung ke Redis, channel ${config.redisChannel}.`);
+    } catch (error) {
+      console.error('Redis belum tersedia:', error.message);
+    } finally {
+      connecting = false;
+    }
+  }, 5000) : null;
+  redisRetry?.unref();
+
+  const ready = new Promise((resolve, reject) => {
+    httpServer.once('error', reject);
+    httpServer.listen(port, host, resolve);
+  });
+  ready.then(() => {
+    console.log(`GCS backend berjalan di http://${host}:${httpServer.address().port}`);
+    if (connectRedis) void (async () => {
+      connecting = true;
+      try { await telemetryService.connectTelemetry(); }
+      catch (error) { console.error('Redis belum tersedia:', error.message); }
+      finally { connecting = false; }
+    })();
+  });
+
+  async function stopServer() {
+    if (stopping) return;
+    stopping = true;
+    if (redisRetry) clearInterval(redisRetry);
+    clearInterval(failsafeTimer);
+    clearInterval(safetyAlertTimer);
+    clearInterval(tlogIndexTimer);
+    await new Promise((resolve) => io.close(resolve));
+    await telemetryService.closeTelemetry().catch((error) => console.error('Gagal menutup Redis:', error.message));
+    database.close();
+  }
+
+  return { app, io, httpServer, ready, stopServer,
+    setActiveMission(id) { activeMission = Number(id); activeWaypointIndex = 0; emergencyTriggered = false; } };
+}
+
+if (require.main === module) {
+  const instance = startServer();
+  let shuttingDown = false;
+  const shutdown = async (reason, exitCode = 0) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.error(`Server berhenti: ${reason}`);
+    try { await instance.stopServer(); }
+    catch (error) { console.error('Gagal shutdown:', error.message); exitCode = 1; }
+    process.exit(exitCode);
+  };
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('unhandledRejection', (error) => void shutdown(`unhandledRejection: ${error?.message || error}`, 1));
+  process.on('uncaughtException', (error) => void shutdown(`uncaughtException: ${error.message}`, 1));
+}
+
+module.exports = { createApp, startServer };
